@@ -1,0 +1,53 @@
+/*
+ * Copyright (C) 2018-2020. Huawei Technologies Co., Ltd. All rights reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+syntax = "proto3";
+
+package nova.hetu.executor;
+
+service Executor {
+  /**
+  should we combine the following two? enqueue will require a Split with reference to a stage,
+  which one is easier to understand?
+   */
+  rpc run (Stage) returns (stream Page) {}
+  rpc enqueue (Split) returns (Split) {}
+}
+
+service Shuffle {
+  rpc getResult(Task) returns (stream Page) {}
+}
+
+message Task { //FIXME: this is hack to stick with the current interfce,
+  string taskId = 1;
+  string bufferId = 2;
+  int64 token = 3;
+  string maxSize = 4;
+}
+
+message Stage {
+
+}
+
+message Split {
+  int32 stageId = 1;
+  string split = 2;
+}
+
+/**
+We might need to have dynamic way to serialize/deserialize the output, a dynamically generated interceptor?
+ */
+message Page {
+
+}
