@@ -160,9 +160,9 @@ public class MergeOperator
         checkState(!blockedOnSplits.isDone(), "noMoreSplits has been called already");
 
         URI location = ((RemoteSplit) split.getConnectorSplit()).getLocation();
-        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
+        ExchangeClientItf exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
         exchangeClient.addLocation(location);
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
         pageProducers.add(exchangeClient.pages()
                 .map(serializedPage -> {
                     operatorContext.recordNetworkInput(serializedPage.getSizeInBytes(), serializedPage.getPositionCount());
@@ -173,7 +173,7 @@ public class MergeOperator
     }
 
     @Override
-    public void noMoreSplits()
+    public void setNoMoreSplits()
     {
         mergedPages = mergeSortedPages(
                 pageProducers,

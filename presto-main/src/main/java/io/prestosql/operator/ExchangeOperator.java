@@ -45,7 +45,7 @@ public class ExchangeOperator
         private final PlanNodeId sourceId;
         private final ExchangeClientSupplier exchangeClientSupplier;
         private final PagesSerdeFactory serdeFactory;
-        private ExchangeClient exchangeClient;
+        private ExchangeClientItf exchangeClient;
         private boolean closed;
 
         public ExchangeOperatorFactory(
@@ -91,21 +91,21 @@ public class ExchangeOperator
 
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
-    private final ExchangeClient exchangeClient;
+    private final ExchangeClientItf exchangeClient;
     private final PagesSerde serde;
 
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
             PagesSerde serde,
-            ExchangeClient exchangeClient)
+            ExchangeClientItf exchangeClient)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.sourceId = requireNonNull(sourceId, "sourceId is null");
         this.exchangeClient = requireNonNull(exchangeClient, "exchangeClient is null");
         this.serde = requireNonNull(serde, "serde is null");
 
-        operatorContext.setInfoSupplier(exchangeClient::getStatus);
+        operatorContext.setInfoSupplier(exchangeClient::getStatistics);
     }
 
     @Override
@@ -127,9 +127,9 @@ public class ExchangeOperator
     }
 
     @Override
-    public void noMoreSplits()
+    public void setNoMoreSplits()
     {
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
     }
 
     @Override

@@ -118,7 +118,7 @@ public class BenchmarkPartitionedOutputOperator
             PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             OutputBuffers buffers = createInitialEmptyOutputBuffers(PARTITIONED);
             for (int partition = 0; partition < PARTITION_COUNT; partition++) {
-                buffers = buffers.withBuffer(new OutputBuffers.OutputBufferId(partition), partition);
+                buffers = buffers.withBuffer(String.valueOf(partition), partition);
             }
             PartitionedOutputBuffer buffer = createPartitionedBuffer(
                     buffers.withNoMoreBufferIds(),
@@ -200,13 +200,15 @@ public class BenchmarkPartitionedOutputOperator
 
         private PartitionedOutputBuffer createPartitionedBuffer(OutputBuffers buffers, DataSize dataSize)
         {
+            PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             return new PartitionedOutputBuffer(
                     "task-instance-id",
                     new StateMachine<>("bufferState", SCHEDULER, OPEN, TERMINAL_BUFFER_STATES),
                     buffers,
                     dataSize,
                     () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                    SCHEDULER);
+                    SCHEDULER,
+                    serdeFactory.createPagesSerde());
         }
     }
 

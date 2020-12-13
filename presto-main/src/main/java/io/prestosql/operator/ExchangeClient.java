@@ -24,13 +24,11 @@ import io.hetu.core.transport.execution.buffer.PageCodecMarker;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.operator.HttpPageBufferClient.ClientCallback;
-import io.prestosql.operator.WorkProcessor.ProcessState;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
-import java.io.Closeable;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -53,7 +51,7 @@ import static java.util.Objects.requireNonNull;
 
 @ThreadSafe
 public class ExchangeClient
-        implements Closeable
+        implements ExchangeClientItf
 {
     private static final SerializedPage NO_MORE_PAGES = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
 
@@ -119,7 +117,8 @@ public class ExchangeClient
         this.pageBufferClientCallbackExecutor = requireNonNull(pageBufferClientCallbackExecutor, "pageBufferClientCallbackExecutor is null");
     }
 
-    public ExchangeClientStatus getStatus()
+    @Override
+    public ExchangeClientStatus getStatistics()
     {
         // The stats created by this method is only for diagnostics.
         // It does not guarantee a consistent view between different exchange clients.
@@ -138,6 +137,13 @@ public class ExchangeClient
         }
     }
 
+    /**
+     * add a location for http client to pull pages
+     * the location contains the node ip and the task id, buffer id??
+     *
+     * @param location
+     */
+    @Override
     public synchronized void addLocation(URI location)
     {
         requireNonNull(location, "location is null");
@@ -154,49 +160,34 @@ public class ExchangeClient
         }
 
         checkState(!noMoreLocations, "No more locations already set");
+        if (false /** grpc.enabled */) {
+            //create grpc client
+        }
+        else {
+            HttpPageBufferClient client = new HttpPageBufferClient(
+                    httpClient,
+                    maxResponseSize,
+                    maxErrorDuration,
+                    acknowledgePages,
+                    location,
+                    new ExchangeClientCallback(),
+                    scheduler,
+                    pageBufferClientCallbackExecutor);
+            allClients.put(location, client);
+            queuedClients.add(client);
 
-        HttpPageBufferClient client = new HttpPageBufferClient(
-                httpClient,
-                maxResponseSize,
-                maxErrorDuration,
-                acknowledgePages,
-                location,
-                new ExchangeClientCallback(),
-                scheduler,
-                pageBufferClientCallbackExecutor);
-        allClients.put(location, client);
-        queuedClients.add(client);
-
-        scheduleRequestIfNecessary();
+            scheduleRequestIfNecessary();
+        }
     }
 
-    public synchronized void noMoreLocations()
+    @Override
+    public synchronized void setNoMoreLocation()
     {
         noMoreLocations = true;
         scheduleRequestIfNecessary();
     }
 
-    public WorkProcessor<SerializedPage> pages()
-    {
-        return WorkProcessor.create(() -> {
-            SerializedPage page = pollPage();
-            if (page == null) {
-                if (isFinished()) {
-                    return ProcessState.finished();
-                }
-
-                ListenableFuture<?> blocked = isBlocked();
-                if (!blocked.isDone()) {
-                    return ProcessState.blocked(blocked);
-                }
-
-                return ProcessState.yield();
-            }
-
-            return ProcessState.ofResult(page);
-        });
-    }
-
+    @Override
     @Nullable
     public SerializedPage pollPage()
     {
@@ -243,6 +234,7 @@ public class ExchangeClient
         return page;
     }
 
+    @Override
     public boolean isFinished()
     {
         throwIfFailed();
@@ -250,6 +242,7 @@ public class ExchangeClient
         return isClosed() && completedClients.size() == allClients.size();
     }
 
+    @Override
     public boolean isClosed()
     {
         return closed.get();
@@ -272,6 +265,13 @@ public class ExchangeClient
             checkState(pageBuffer.add(NO_MORE_PAGES), "Could not add no more pages marker");
         }
         notifyBlockedCallers();
+    }
+
+    public synchronized void scheduleGrpcRequest()
+    {
+        if (isFinished() || isFailed()) {
+            throw new IllegalStateException("Task has finished or failed");
+        }
     }
 
     public synchronized void scheduleRequestIfNecessary()

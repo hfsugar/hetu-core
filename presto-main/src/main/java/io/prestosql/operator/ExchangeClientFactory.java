@@ -110,7 +110,7 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
+    public ExchangeClientItf get(LocalMemoryContext systemMemoryContext)
     {
         return new ExchangeClient(
                 maxBufferedBytes,

@@ -24,7 +24,6 @@ import io.airlift.units.Duration;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.LocalMemoryManager;
 import io.prestosql.memory.NodeMemoryConfig;
@@ -62,7 +61,7 @@ import static org.testng.Assert.assertNull;
 public class TestSqlTaskManager
 {
     private static final TaskId TASK_ID = new TaskId("query", 0, 1);
-    public static final OutputBufferId OUT = new OutputBufferId(0);
+    public static final String OUT = String.valueOf(0);
 
     private final TaskExecutor taskExecutor;
     private final TaskManagementExecutor taskManagementExecutor;

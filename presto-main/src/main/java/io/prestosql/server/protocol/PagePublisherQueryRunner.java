@@ -26,7 +26,7 @@ import io.prestosql.datacenter.DataCenterStatementResource;
 import io.prestosql.dispatcher.DispatchManager;
 import io.prestosql.execution.QueryManager;
 import io.prestosql.memory.context.SimpleLocalMemoryContext;
-import io.prestosql.operator.ExchangeClient;
+import io.prestosql.operator.ExchangeClientItf;
 import io.prestosql.operator.ExchangeClientSupplier;
 import io.prestosql.server.SessionContext;
 import io.prestosql.spi.QueryId;
@@ -218,7 +218,7 @@ public class PagePublisherQueryRunner
             throw badRequest(NOT_FOUND, "Query not found");
         }
 
-        ExchangeClient exchangeClient = this.exchangeClientSupplier.get(
+        ExchangeClientItf exchangeClient = this.exchangeClientSupplier.get(
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(),
                         DataCenterStatementResource.class.getSimpleName()));
         return Query.create(session, slug, queryManager, exchangeClient, executor, timeoutExecutor,

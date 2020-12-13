@@ -30,7 +30,6 @@ import io.prestosql.connector.CatalogName;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffer;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.buffer.PartitionedOutputBuffer;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.MemoryPool;
@@ -109,7 +108,7 @@ import static org.testng.Assert.assertFalse;
 @Test(singleThreaded = true)
 public class TestSqlTaskExecution
 {
-    private static final OutputBufferId OUTPUT_BUFFER_ID = new OutputBufferId(0);
+    private static final String OUTPUT_BUFFER_ID = String.valueOf(0);
     private static final CatalogName CONNECTOR_ID = new CatalogName("test");
     private static final Duration ASSERT_WAIT_TIMEOUT = new Duration(1, HOURS);
 
@@ -614,7 +613,8 @@ public class TestSqlTaskExecution
                         .withNoMoreBufferIds(),
                 new DataSize(1, MEGABYTE),
                 () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                taskNotificationExecutor);
+                taskNotificationExecutor,
+                new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false).createPagesSerde());
     }
 
     private <T> void waitUntilEquals(Supplier<T> actualSupplier, T expected, Duration timeout)
@@ -637,12 +637,12 @@ public class TestSqlTaskExecution
     private static class OutputBufferConsumer
     {
         private final OutputBuffer outputBuffer;
-        private final OutputBufferId outputBufferId;
+        private final String outputBufferId;
         private int sequenceId;
         private int surplusPositions;
         private boolean bufferComplete;
 
-        public OutputBufferConsumer(OutputBuffer outputBuffer, OutputBufferId outputBufferId)
+        public OutputBufferConsumer(OutputBuffer outputBuffer, String outputBufferId)
         {
             this.outputBuffer = outputBuffer;
             this.outputBufferId = outputBufferId;
@@ -840,7 +840,7 @@ public class TestSqlTaskExecution
             }
 
             @Override
-            public void noMoreSplits()
+            public void setNoMoreSplits()
             {
                 if (split == null) {
                     finish();

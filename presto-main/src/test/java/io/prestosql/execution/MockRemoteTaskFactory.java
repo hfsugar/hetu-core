@@ -369,7 +369,7 @@ public class MockRemoteTaskFactory
         @Override
         public void setOutputBuffers(OutputBuffers outputBuffers)
         {
-            outputBuffer.setOutputBuffers(outputBuffers);
+            outputBuffer.setOutputBuffers(outputBuffers, null);
         }
 
         @Override

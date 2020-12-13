@@ -105,7 +105,7 @@ public class TestExchangeClient
                 pageBufferClientCallbackExecutor);
 
         exchangeClient.addLocation(location);
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
 
         assertEquals(exchangeClient.isClosed(), false);
         assertPageEquals(getNextPage(exchangeClient), createPage(1));
@@ -116,7 +116,7 @@ public class TestExchangeClient
         assertNull(getNextPage(exchangeClient));
         assertEquals(exchangeClient.isClosed(), true);
 
-        ExchangeClientStatus status = exchangeClient.getStatus();
+        ExchangeClientStatus status = exchangeClient.getStatistics();
         assertEquals(status.getBufferedPages(), 0);
         assertEquals(status.getBufferedBytes(), 0);
 
@@ -177,14 +177,14 @@ public class TestExchangeClient
         assertFalse(tryGetFutureValue(exchangeClient.isBlocked(), 10, MILLISECONDS).isPresent());
         assertEquals(exchangeClient.isClosed(), false);
 
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
         // The transition to closed may happen asynchronously, since it requires that all the HTTP clients
         // receive a final GONE response, so just spin until it's closed or the test times out.
         while (!exchangeClient.isClosed()) {
             Thread.sleep(1);
         }
 
-        ImmutableMap<URI, PageBufferClientStatus> statuses = uniqueIndex(exchangeClient.getStatus().getPageBufferClientStatuses(), PageBufferClientStatus::getUri);
+        ImmutableMap<URI, PageBufferClientStatus> statuses = uniqueIndex(exchangeClient.getStatistics().getPageBufferClientStatuses(), PageBufferClientStatus::getUri);
         assertStatus(statuses.get(location1), location1, "closed", 3, 3, 3, "not scheduled");
         assertStatus(statuses.get(location2), location2, "closed", 3, 3, 3, "not scheduled");
     }
@@ -216,7 +216,7 @@ public class TestExchangeClient
                 pageBufferClientCallbackExecutor);
 
         exchangeClient.addLocation(location);
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
         assertEquals(exchangeClient.isClosed(), false);
 
         long start = System.nanoTime();
@@ -229,12 +229,12 @@ public class TestExchangeClient
             assertLessThan(Duration.nanosSince(start), new Duration(5, TimeUnit.SECONDS));
             sleepUninterruptibly(100, MILLISECONDS);
         }
-        while (exchangeClient.getStatus().getBufferedPages() == 0);
+        while (exchangeClient.getStatistics().getBufferedPages() == 0);
 
         // client should have sent a single request for a single page
-        assertEquals(exchangeClient.getStatus().getBufferedPages(), 1);
-        assertTrue(exchangeClient.getStatus().getBufferedBytes() > 0);
-        assertStatus(exchangeClient.getStatus().getPageBufferClientStatuses().get(0), location, "queued", 1, 1, 1, "not scheduled");
+        assertEquals(exchangeClient.getStatistics().getBufferedPages(), 1);
+        assertTrue(exchangeClient.getStatistics().getBufferedBytes() > 0);
+        assertStatus(exchangeClient.getStatistics().getPageBufferClientStatuses().get(0), location, "queued", 1, 1, 1, "not scheduled");
 
         // remove the page and wait for the client to fetch another page
         assertPageEquals(exchangeClient.pollPage(), createPage(1));
@@ -242,12 +242,12 @@ public class TestExchangeClient
             assertLessThan(Duration.nanosSince(start), new Duration(5, TimeUnit.SECONDS));
             sleepUninterruptibly(100, MILLISECONDS);
         }
-        while (exchangeClient.getStatus().getBufferedPages() == 0);
+        while (exchangeClient.getStatistics().getBufferedPages() == 0);
 
         // client should have sent a single request for a single page
-        assertStatus(exchangeClient.getStatus().getPageBufferClientStatuses().get(0), location, "queued", 2, 2, 2, "not scheduled");
-        assertEquals(exchangeClient.getStatus().getBufferedPages(), 1);
-        assertTrue(exchangeClient.getStatus().getBufferedBytes() > 0);
+        assertStatus(exchangeClient.getStatistics().getPageBufferClientStatuses().get(0), location, "queued", 2, 2, 2, "not scheduled");
+        assertEquals(exchangeClient.getStatistics().getBufferedPages(), 1);
+        assertTrue(exchangeClient.getStatistics().getBufferedBytes() > 0);
 
         // remove the page and wait for the client to fetch another page
         assertPageEquals(exchangeClient.pollPage(), createPage(2));
@@ -255,22 +255,22 @@ public class TestExchangeClient
             assertLessThan(Duration.nanosSince(start), new Duration(5, TimeUnit.SECONDS));
             sleepUninterruptibly(100, MILLISECONDS);
         }
-        while (exchangeClient.getStatus().getBufferedPages() == 0);
+        while (exchangeClient.getStatistics().getBufferedPages() == 0);
 
         // client should have sent a single request for a single page
-        assertStatus(exchangeClient.getStatus().getPageBufferClientStatuses().get(0), location, "queued", 3, 3, 3, "not scheduled");
-        assertEquals(exchangeClient.getStatus().getBufferedPages(), 1);
-        assertTrue(exchangeClient.getStatus().getBufferedBytes() > 0);
+        assertStatus(exchangeClient.getStatistics().getPageBufferClientStatuses().get(0), location, "queued", 3, 3, 3, "not scheduled");
+        assertEquals(exchangeClient.getStatistics().getBufferedPages(), 1);
+        assertTrue(exchangeClient.getStatistics().getBufferedBytes() > 0);
 
         // remove last page
         assertPageEquals(getNextPage(exchangeClient), createPage(3));
 
         //  wait for client to decide there are no more pages
         assertNull(getNextPage(exchangeClient));
-        assertEquals(exchangeClient.getStatus().getBufferedPages(), 0);
-        assertTrue(exchangeClient.getStatus().getBufferedBytes() == 0);
+        assertEquals(exchangeClient.getStatistics().getBufferedPages(), 0);
+        assertTrue(exchangeClient.getStatistics().getBufferedBytes() == 0);
         assertEquals(exchangeClient.isClosed(), true);
-        assertStatus(exchangeClient.getStatus().getPageBufferClientStatuses().get(0), location, "closed", 3, 5, 5, "not scheduled");
+        assertStatus(exchangeClient.getStatistics().getPageBufferClientStatuses().get(0), location, "closed", 3, 5, 5, "not scheduled");
     }
 
     @Test
@@ -297,7 +297,7 @@ public class TestExchangeClient
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
                 pageBufferClientCallbackExecutor);
         exchangeClient.addLocation(location);
-        exchangeClient.noMoreLocations();
+        exchangeClient.setNoMoreLocation();
 
         // fetch a page
         assertEquals(exchangeClient.isClosed(), false);
@@ -310,11 +310,11 @@ public class TestExchangeClient
         }
         assertEquals(exchangeClient.isClosed(), true);
         assertNull(exchangeClient.pollPage());
-        assertEquals(exchangeClient.getStatus().getBufferedPages(), 0);
-        assertEquals(exchangeClient.getStatus().getBufferedBytes(), 0);
+        assertEquals(exchangeClient.getStatistics().getBufferedPages(), 0);
+        assertEquals(exchangeClient.getStatistics().getBufferedBytes(), 0);
 
         // client should have sent only 2 requests: one to get all pages and once to get the done signal
-        PageBufferClientStatus clientStatus = exchangeClient.getStatus().getPageBufferClientStatuses().get(0);
+        PageBufferClientStatus clientStatus = exchangeClient.getStatistics().getPageBufferClientStatuses().get(0);
         assertEquals(clientStatus.getUri(), location);
         assertEquals(clientStatus.getState(), "closed", "status");
         assertEquals(clientStatus.getHttpRequestState(), "not scheduled", "httpRequestState");

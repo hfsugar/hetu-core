@@ -19,7 +19,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.spi.Page;
@@ -39,7 +38,6 @@ import java.util.function.Function;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.prestosql.execution.buffer.PageSplitterUtil.splitPage;
 import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -82,14 +80,14 @@ public class PartitionedOutputOperator
                 int operatorId,
                 PlanNodeId planNodeId,
                 List<Type> types,
-                Function<Page, Page> pagePreprocessor,
+                Function<Page, Page> pageLayoutProcessor,
                 PagesSerdeFactory serdeFactory)
         {
             return new PartitionedOutputOperatorFactory(
                     operatorId,
                     planNodeId,
                     types,
-                    pagePreprocessor,
+                    pageLayoutProcessor,
                     partitionFunction,
                     partitionChannels,
                     partitionConstants,
@@ -428,11 +426,7 @@ public class PartitionedOutputOperator
                     Page pagePartition = partitionPageBuilder.build();
                     partitionPageBuilder.reset();
 
-                    List<SerializedPage> serializedPages = splitPage(pagePartition, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
-                            .map(serde::serialize)
-                            .collect(toImmutableList());
-
-                    outputBuffer.enqueue(partition, serializedPages);
+                    outputBuffer.enqueue(partition, pagePartition);
                     pagesAdded.incrementAndGet();
                     rowsAdded.addAndGet(pagePartition.getPositionCount());
                 }

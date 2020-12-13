@@ -13,23 +13,20 @@
  */
 package io.prestosql.execution.buffer;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.StateMachine;
 import io.prestosql.execution.StateMachine.StateChangeListener;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.context.LocalMemoryContext;
 
 import java.util.List;
 import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.prestosql.execution.buffer.BufferState.FAILED;
 import static io.prestosql.execution.buffer.BufferState.FINISHED;
@@ -41,39 +38,28 @@ import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED
 import static java.util.Objects.requireNonNull;
 
 public class PartitionedOutputBuffer
-        implements OutputBuffer
+        extends OutputBuffer
 {
-    private final StateMachine<BufferState> state;
     private final OutputBuffers outputBuffers;
-    private final OutputBufferMemoryManager memoryManager;
-
     private final List<ClientBuffer> partitions;
 
-    private final AtomicLong totalPagesAdded = new AtomicLong();
-    private final AtomicLong totalRowsAdded = new AtomicLong();
-
     public PartitionedOutputBuffer(
-            String taskInstanceId,
+            java.lang.String taskInstanceId,
             StateMachine<BufferState> state,
             OutputBuffers outputBuffers,
             DataSize maxBufferSize,
             Supplier<LocalMemoryContext> systemMemoryContextSupplier,
-            Executor notificationExecutor)
+            Executor notificationExecutor,
+            PagesSerde serde)
     {
-        this.state = requireNonNull(state, "state is null");
-
+        super(state, maxBufferSize, systemMemoryContextSupplier, notificationExecutor, serde);
         requireNonNull(outputBuffers, "outputBuffers is null");
         checkArgument(outputBuffers.getType() == PARTITIONED, "Expected a PARTITIONED output buffer descriptor");
         checkArgument(outputBuffers.isNoMoreBufferIds(), "Expected a final output buffer descriptor");
         this.outputBuffers = outputBuffers;
 
-        this.memoryManager = new OutputBufferMemoryManager(
-                requireNonNull(maxBufferSize, "maxBufferSize is null").toBytes(),
-                requireNonNull(systemMemoryContextSupplier, "systemMemoryContextSupplier is null"),
-                requireNonNull(notificationExecutor, "notificationExecutor is null"));
-
         ImmutableList.Builder<ClientBuffer> partitions = ImmutableList.builder();
-        for (OutputBufferId bufferId : outputBuffers.getBuffers().keySet()) {
+        for (String bufferId : outputBuffers.getBuffers().keySet()) {
             ClientBuffer partition = new ClientBuffer(taskInstanceId, bufferId);
             partitions.add(partition);
         }
@@ -91,25 +77,7 @@ public class PartitionedOutputBuffer
     }
 
     @Override
-    public boolean isFinished()
-    {
-        return state.get() == FINISHED;
-    }
-
-    @Override
-    public double getUtilization()
-    {
-        return memoryManager.getUtilization();
-    }
-
-    @Override
-    public boolean isOverutilized()
-    {
-        return memoryManager.isOverutilized();
-    }
-
-    @Override
-    public OutputBufferInfo getInfo()
+    public OutputBufferStatistics getInfo()
     {
         //
         // NOTE: this code must be lock free so we do not hang for state machine updates
@@ -128,7 +96,7 @@ public class PartitionedOutputBuffer
             totalBufferedPages += pageBufferInfo.getBufferedPages();
         }
 
-        return new OutputBufferInfo(
+        return new OutputBufferStatistics(
                 "PARTITIONED",
                 state,
                 state.canAddBuffers(),
@@ -141,7 +109,7 @@ public class PartitionedOutputBuffer
     }
 
     @Override
-    public void setOutputBuffers(OutputBuffers newOutputBuffers)
+    public void setOutputBuffers(OutputBuffers newOutputBuffers, PagesSerde serde)
     {
         requireNonNull(newOutputBuffers, "newOutputBuffers is null");
 
@@ -155,39 +123,8 @@ public class PartitionedOutputBuffer
         outputBuffers.checkValidTransition(newOutputBuffers);
     }
 
-    @Override
-    public ListenableFuture<?> isFull()
+    void doEnqueue(int partitionNumber, List<SerializedPage> pages)
     {
-        return memoryManager.getBufferBlockedFuture();
-    }
-
-    @Override
-    public void enqueue(List<SerializedPage> pages)
-    {
-        checkState(partitions.size() == 1, "Expected exactly one partition");
-        enqueue(0, pages);
-    }
-
-    @Override
-    public void enqueue(int partitionNumber, List<SerializedPage> pages)
-    {
-        requireNonNull(pages, "pages is null");
-
-        // ignore pages after "no more pages" is set
-        // this can happen with a limit query
-        if (!state.get().canAddPages()) {
-            return;
-        }
-
-        // reserve memory
-        long bytesAdded = pages.stream().mapToLong(SerializedPage::getRetainedSizeInBytes).sum();
-        memoryManager.updateMemoryUsage(bytesAdded);
-
-        // update stats
-        long rowCount = pages.stream().mapToLong(SerializedPage::getPositionCount).sum();
-        totalRowsAdded.addAndGet(rowCount);
-        totalPagesAdded.addAndGet(pages.size());
-
         // create page reference counts with an initial single reference
         List<SerializedPageReference> serializedPageReferences = pages.stream()
                 .map(bufferedPage -> new SerializedPageReference(bufferedPage, 1, () -> memoryManager.updateMemoryUsage(-bufferedPage.getRetainedSizeInBytes())))
@@ -201,28 +138,28 @@ public class PartitionedOutputBuffer
     }
 
     @Override
-    public ListenableFuture<BufferResult> get(OutputBufferId outputBufferId, long startingSequenceId, DataSize maxSize)
+    public ListenableFuture<BufferResult> get(String outputBufferId, long startingSequenceId, DataSize maxSize)
     {
         requireNonNull(outputBufferId, "outputBufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
-        return partitions.get(outputBufferId.getId()).getPages(startingSequenceId, maxSize);
+        return partitions.get(Integer.valueOf(outputBufferId)).getPages(startingSequenceId, maxSize);
     }
 
     @Override
-    public void acknowledge(OutputBufferId outputBufferId, long sequenceId)
+    public void acknowledge(String outputBufferId, long sequenceId)
     {
         requireNonNull(outputBufferId, "bufferId is null");
 
-        partitions.get(outputBufferId.getId()).acknowledgePages(sequenceId);
+        partitions.get(Integer.valueOf(outputBufferId)).acknowledgePages(sequenceId);
     }
 
     @Override
-    public void abort(OutputBufferId bufferId)
+    public void abort(String bufferId)
     {
         requireNonNull(bufferId, "bufferId is null");
 
-        partitions.get(bufferId.getId()).destroy();
+        partitions.get(Integer.valueOf(bufferId)).destroy();
 
         checkFlushComplete();
     }
@@ -261,18 +198,6 @@ public class PartitionedOutputBuffer
         }
     }
 
-    @Override
-    public long getPeakMemoryUsage()
-    {
-        return memoryManager.getPeakMemoryUsage();
-    }
-
-    @VisibleForTesting
-    void forceFreeMemory()
-    {
-        memoryManager.close();
-    }
-
     private void checkFlushComplete()
     {
         if (state.get() != FLUSHING && state.get() != NO_MORE_BUFFERS) {
@@ -282,11 +207,5 @@ public class PartitionedOutputBuffer
         if (partitions.stream().allMatch(ClientBuffer::isDestroyed)) {
             destroy();
         }
-    }
-
-    @VisibleForTesting
-    OutputBufferMemoryManager getMemoryManager()
-    {
-        return memoryManager;
     }
 }

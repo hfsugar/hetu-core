@@ -30,7 +30,6 @@ import io.prestosql.dynamicfilter.DynamicFilterService;
 import io.prestosql.execution.QueryPreparer.PreparedQuery;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.scheduler.ExecutionPolicy;
 import io.prestosql.execution.scheduler.NodeScheduler;
 import io.prestosql.execution.scheduler.SplitSchedulerStats;
@@ -120,10 +119,10 @@ public class SqlQueryExecution
 {
     private static final Logger log = Logger.get(SqlQueryExecution.class);
 
-    private static final OutputBufferId OUTPUT_BUFFER_ID = new OutputBufferId(0);
+    private static final String OUTPUT_BUFFER_ID = String.valueOf(0);
 
     private final QueryStateMachine stateMachine;
-    private final String slug;
+    private final java.lang.String slug;
     private final Metadata metadata;
     private final SqlParser sqlParser;
     private final SplitManager splitManager;
@@ -153,7 +152,7 @@ public class SqlQueryExecution
     public SqlQueryExecution(
             PreparedQuery preparedQuery,
             QueryStateMachine stateMachine,
-            String slug,
+            java.lang.String slug,
             Metadata metadata,
             AccessControl accessControl,
             SqlParser sqlParser,
@@ -252,7 +251,7 @@ public class SqlQueryExecution
     }
 
     @Override
-    public String getSlug()
+    public java.lang.String getSlug()
     {
         return slug;
     }
@@ -804,7 +803,7 @@ public class SqlQueryExecution
         private final ScheduledExecutorService schedulerExecutor;
         private final FailureDetector failureDetector;
         private final NodeTaskMap nodeTaskMap;
-        private final Map<String, ExecutionPolicy> executionPolicies;
+        private final Map<java.lang.String, ExecutionPolicy> executionPolicies;
         private final StatsCalculator statsCalculator;
         private final CostCalculator costCalculator;
         private final DynamicFilterService dynamicFilterService;
@@ -830,7 +829,7 @@ public class SqlQueryExecution
                 FailureDetector failureDetector,
                 NodeTaskMap nodeTaskMap,
                 QueryExplainer queryExplainer,
-                Map<String, ExecutionPolicy> executionPolicies,
+                Map<java.lang.String, ExecutionPolicy> executionPolicies,
                 SplitSchedulerStats schedulerStats,
                 StatsCalculator statsCalculator,
                 CostCalculator costCalculator,
@@ -885,10 +884,10 @@ public class SqlQueryExecution
         public QueryExecution createQueryExecution(
                 PreparedQuery preparedQuery,
                 QueryStateMachine stateMachine,
-                String slug,
+                java.lang.String slug,
                 WarningCollector warningCollector)
         {
-            String executionPolicyName = SystemSessionProperties.getExecutionPolicy(stateMachine.getSession());
+            java.lang.String executionPolicyName = SystemSessionProperties.getExecutionPolicy(stateMachine.getSession());
             ExecutionPolicy executionPolicy = executionPolicies.get(executionPolicyName);
             checkArgument(executionPolicy != null, "No execution policy %s", executionPolicy);
 

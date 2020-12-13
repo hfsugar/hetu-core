@@ -22,7 +22,7 @@ import java.util.Objects;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 
-public final class OutputBufferInfo
+public final class OutputBufferStatistics
 {
     private final String type;
     private final BufferState state;
@@ -35,7 +35,7 @@ public final class OutputBufferInfo
     private final List<BufferInfo> buffers;
 
     @JsonCreator
-    public OutputBufferInfo(
+    public OutputBufferStatistics(
             @JsonProperty("type") String type,
             @JsonProperty("state") BufferState state,
             @JsonProperty("canAddBuffers") boolean canAddBuffers,
@@ -111,9 +111,9 @@ public final class OutputBufferInfo
         return totalPagesSent;
     }
 
-    public OutputBufferInfo summarize()
+    public OutputBufferStatistics summarize()
     {
-        return new OutputBufferInfo(type, state, canAddBuffers, canAddPages, totalBufferedBytes, totalBufferedPages, totalRowsSent, totalPagesSent, ImmutableList.of());
+        return new OutputBufferStatistics(type, state, canAddBuffers, canAddPages, totalBufferedBytes, totalBufferedPages, totalRowsSent, totalPagesSent, ImmutableList.of());
     }
 
     @Override
@@ -125,7 +125,7 @@ public final class OutputBufferInfo
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        OutputBufferInfo that = (OutputBufferInfo) o;
+        OutputBufferStatistics that = (OutputBufferStatistics) o;
         return Objects.equals(type, that.type) &&
                 Objects.equals(canAddBuffers, that.canAddBuffers) &&
                 Objects.equals(canAddPages, that.canAddPages) &&

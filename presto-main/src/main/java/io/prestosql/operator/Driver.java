@@ -254,7 +254,7 @@ public class Driver
 
         // set no more splits
         if (newSource.isNoMoreSplits()) {
-            sourceOperator.noMoreSplits();
+            sourceOperator.setNoMoreSplits();
         }
 
         currentTaskSource = newSource;

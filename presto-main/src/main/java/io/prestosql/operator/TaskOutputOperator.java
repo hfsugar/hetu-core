@@ -16,7 +16,6 @@ package io.prestosql.operator;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
@@ -25,9 +24,6 @@ import io.prestosql.sql.planner.plan.PlanNodeId;
 import java.util.List;
 import java.util.function.Function;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.prestosql.execution.buffer.PageSplitterUtil.splitPage;
-import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static java.util.Objects.requireNonNull;
 
 public class TaskOutputOperator
@@ -44,9 +40,9 @@ public class TaskOutputOperator
         }
 
         @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pageLayoutProcessor, PagesSerdeFactory serdeFactory)
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, serdeFactory);
         }
     }
 
@@ -99,6 +95,7 @@ public class TaskOutputOperator
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
         this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
+        //this.output = ShuffleService.getOutStream(operatorContext.getDriverContext().getTaskId(), outputBuffer.getInfo());
     }
 
     @Override
@@ -142,11 +139,12 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
-                .map(serde::serialize)
-                .collect(toImmutableList());
-
-        outputBuffer.enqueue(serializedPages);
+        if (false /** grpc.enabled = true */) {
+            //redirect to grpc shuffle service
+        }
+        else {
+            outputBuffer.enqueue(page);
+        }
         operatorContext.recordOutput(page.getSizeInBytes(), page.getPositionCount());
     }
 
