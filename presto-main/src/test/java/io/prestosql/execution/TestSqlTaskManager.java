@@ -29,8 +29,8 @@ import io.prestosql.memory.LocalMemoryManager;
 import io.prestosql.memory.NodeMemoryConfig;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.metadata.InternalNode;
-import io.prestosql.operator.ExchangeClient;
 import io.prestosql.operator.ExchangeClientSupplier;
+import io.prestosql.operator.HttpExchangeClient;
 import io.prestosql.spi.QueryId;
 import io.prestosql.spiller.LocalSpillManager;
 import io.prestosql.spiller.NodeSpillConfig;
@@ -274,7 +274,7 @@ public class TestSqlTaskManager
             implements ExchangeClientSupplier
     {
         @Override
-        public ExchangeClient get(LocalMemoryContext systemMemoryContext)
+        public HttpExchangeClient get(LocalMemoryContext systemMemoryContext)
         {
             throw new UnsupportedOperationException();
         }

@@ -45,7 +45,7 @@ public class ExchangeOperator
         private final PlanNodeId sourceId;
         private final ExchangeClientSupplier exchangeClientSupplier;
         private final PagesSerdeFactory serdeFactory;
-        private ExchangeClientItf exchangeClient;
+        private ExchangeClient exchangeClient;
         private boolean closed;
 
         public ExchangeOperatorFactory(
@@ -91,14 +91,14 @@ public class ExchangeOperator
 
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
-    private final ExchangeClientItf exchangeClient;
+    private final ExchangeClient exchangeClient;
     private final PagesSerde serde;
 
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
             PagesSerde serde,
-            ExchangeClientItf exchangeClient)
+            ExchangeClient exchangeClient)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.sourceId = requireNonNull(sourceId, "sourceId is null");

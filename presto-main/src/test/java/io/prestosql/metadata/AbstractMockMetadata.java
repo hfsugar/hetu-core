@@ -28,7 +28,6 @@ import io.prestosql.spi.block.ByteArrayBlockEncoding;
 import io.prestosql.spi.block.DictionaryBlockEncoding;
 import io.prestosql.spi.block.Int128ArrayBlockEncoding;
 import io.prestosql.spi.block.IntArrayBlockEncoding;
-import io.prestosql.spi.block.LazyBlockEncoding;
 import io.prestosql.spi.block.LongArrayBlockEncoding;
 import io.prestosql.spi.block.MapBlockEncoding;
 import io.prestosql.spi.block.RowBlockEncoding;
@@ -638,22 +637,47 @@ public abstract class AbstractMockMetadata
     @Override
     public BlockEncoding getBlockEncoding(String encodingName)
     {
-        if (encodingName.equals(VariableWidthBlockEncoding.NAME)) return new VariableWidthBlockEncoding();
-        if (encodingName.equals(ByteArrayBlockEncoding.NAME)) return new ByteArrayBlockEncoding();
-        if (encodingName.equals(ShortArrayBlockEncoding.NAME)) return new ShortArrayBlockEncoding();
-        if (encodingName.equals(IntArrayBlockEncoding.NAME)) return new IntArrayBlockEncoding();
-        if (encodingName.equals(LongArrayBlockEncoding.NAME)) return new LongArrayBlockEncoding();
-        if (encodingName.equals(Int128ArrayBlockEncoding.NAME)) return new Int128ArrayBlockEncoding();
-        if (encodingName.equals(DictionaryBlockEncoding.NAME)) return new DictionaryBlockEncoding();
-        if (encodingName.equals(MapBlockEncoding.NAME)) return new MapBlockEncoding(new InternalTypeManager(this));
-        if (encodingName.equals(SingleMapBlockEncoding.NAME)) return new SingleMapBlockEncoding(new InternalTypeManager(this));
-        if (encodingName.equals(RowBlockEncoding.NAME)) return new RowBlockEncoding();
-        if (encodingName.equals(SingleRowBlockEncoding.NAME)) return new SingleRowBlockEncoding();
-        if (encodingName.equals(RunLengthBlockEncoding.NAME)) return new RunLengthBlockEncoding();
-        if (encodingName.equals(ArrayBlockEncoding.NAME)) return new ArrayBlockEncoding();
+        if (encodingName.equals(VariableWidthBlockEncoding.NAME)) {
+            return new VariableWidthBlockEncoding();
+        }
+        if (encodingName.equals(ByteArrayBlockEncoding.NAME)) {
+            return new ByteArrayBlockEncoding();
+        }
+        if (encodingName.equals(ShortArrayBlockEncoding.NAME)) {
+            return new ShortArrayBlockEncoding();
+        }
+        if (encodingName.equals(IntArrayBlockEncoding.NAME)) {
+            return new IntArrayBlockEncoding();
+        }
+        if (encodingName.equals(LongArrayBlockEncoding.NAME)) {
+            return new LongArrayBlockEncoding();
+        }
+        if (encodingName.equals(Int128ArrayBlockEncoding.NAME)) {
+            return new Int128ArrayBlockEncoding();
+        }
+        if (encodingName.equals(DictionaryBlockEncoding.NAME)) {
+            return new DictionaryBlockEncoding();
+        }
+        if (encodingName.equals(MapBlockEncoding.NAME)) {
+            return new MapBlockEncoding(new InternalTypeManager(this));
+        }
+        if (encodingName.equals(SingleMapBlockEncoding.NAME)) {
+            return new SingleMapBlockEncoding(new InternalTypeManager(this));
+        }
+        if (encodingName.equals(RowBlockEncoding.NAME)) {
+            return new RowBlockEncoding();
+        }
+        if (encodingName.equals(SingleRowBlockEncoding.NAME)) {
+            return new SingleRowBlockEncoding();
+        }
+        if (encodingName.equals(RunLengthBlockEncoding.NAME)) {
+            return new RunLengthBlockEncoding();
+        }
+        if (encodingName.equals(ArrayBlockEncoding.NAME)) {
+            return new ArrayBlockEncoding();
+        }
         throw new UnsupportedOperationException();
     }
-
 
     @Override
     public BlockEncodingSerde getBlockEncodingSerde()

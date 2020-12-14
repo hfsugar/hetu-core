@@ -27,7 +27,7 @@ import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDe
 import static io.airlift.configuration.testing.ConfigAssertions.recordDefaults;
 import static io.airlift.units.DataSize.Unit;
 
-public class TestExchangeClientConfig
+public class TestHttpExchangeClientConfig
 {
     @Test
     public void testDefaults()

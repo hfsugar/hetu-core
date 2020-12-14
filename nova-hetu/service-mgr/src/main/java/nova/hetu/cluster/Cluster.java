@@ -20,12 +20,14 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.ServerServiceDefinition;
 import io.grpc.StatusRuntimeException;
 import io.grpc.services.HealthStatusManager;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -52,11 +54,17 @@ public class Cluster
             throws IOException, InterruptedException
     {
         server.start();
-        log.info("Listening on port " + config.local.port);
+        log.info("Listening on port " + server.getPort());
+        log.info("\t Services:");
+        List<ServerServiceDefinition> services = server.getServices();
+        for (ServerServiceDefinition service : services) {
+            log.info("\t\t " + service.getServiceDescriptor().getName());
+        }
 
-        joinCluster();
+        //joinCluster();
         addShutdownHook(server);
-        server.awaitTermination();
+        //server.awaitTermination();
+        log.info("gRpc server started properly");
     }
 
     private void joinCluster()
@@ -141,9 +149,7 @@ public class Cluster
 
         public Builder addService(BindableService service)
         {
-            if (serverBuilder == null) {
-                serverBuilder.addService(service);
-            }
+            serverBuilder.addService(service);
             return this;
         }
 

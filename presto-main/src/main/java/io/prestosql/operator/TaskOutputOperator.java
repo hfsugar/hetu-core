@@ -20,6 +20,7 @@ import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nove.hetu.executor.ShuffleService;
 
 import java.util.List;
 import java.util.function.Function;
@@ -29,6 +30,8 @@ import static java.util.Objects.requireNonNull;
 public class TaskOutputOperator
         implements Operator
 {
+    private final ShuffleService.Out output;
+
     public static class TaskOutputFactory
             implements OutputFactory
     {
@@ -95,7 +98,7 @@ public class TaskOutputOperator
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
         this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
-        //this.output = ShuffleService.getOutStream(operatorContext.getDriverContext().getTaskId(), outputBuffer.getInfo());
+        this.output = ShuffleService.getOutStream(operatorContext.getDriverContext().getTaskId().toString(), String.valueOf(0), serdeFactory.createPagesSerde());
     }
 
     @Override
@@ -139,8 +142,9 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        if (false /** grpc.enabled = true */) {
+        if (true /** grpc.enabled = true */) {
             //redirect to grpc shuffle service
+            output.write(page);
         }
         else {
             outputBuffer.enqueue(page);

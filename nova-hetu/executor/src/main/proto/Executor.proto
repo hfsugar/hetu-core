@@ -49,5 +49,9 @@ message Split {
 We might need to have dynamic way to serialize/deserialize the output, a dynamically generated interceptor?
  */
 message Page {
-
+  bytes sliceArray = 1;
+  int32 pageCodecMarkers = 2;
+  int32 positionCount = 3;
+  int32 uncompressedSizeInBytes = 4;
+  string properties = 5;
 }

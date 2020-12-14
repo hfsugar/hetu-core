@@ -17,5 +17,5 @@ import io.prestosql.memory.context.LocalMemoryContext;
 
 public interface ExchangeClientSupplier
 {
-    ExchangeClientItf get(LocalMemoryContext systemMemoryContext);
+    ExchangeClient get(LocalMemoryContext systemMemoryContext);
 }

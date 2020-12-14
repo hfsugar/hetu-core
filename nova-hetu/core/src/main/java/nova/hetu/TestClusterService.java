@@ -12,13 +12,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.cluster;
+package nova.hetu;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import nova.hetu.cluster.ClusterConfig;
+import nova.hetu.executor.ExecutorOuterClass;
+import nova.hetu.executor.ShuffleGrpc;
 
-import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Iterator;
 
 public class TestClusterService
 {
@@ -29,8 +32,10 @@ public class TestClusterService
     {
         ManagedChannel channel = ManagedChannelBuilder.forAddress(ClusterConfig.config.local.ip, ClusterConfig.config.local.port).usePlaintext().build();
 
-        ClusterGrpc.ClusterBlockingStub stub = ClusterGrpc.newBlockingStub(channel);
-        ClusterOuterClass.ClusterInfo info = stub.join(ClusterOuterClass.Node.newBuilder().setIp(InetAddress.getLocalHost().getHostAddress()).setPort(58092).build());
-        System.out.println(info);
+        ShuffleGrpc.ShuffleBlockingStub stub = ShuffleGrpc.newBlockingStub(channel);
+        Iterator<ExecutorOuterClass.Page> pages = stub.getResult(ExecutorOuterClass.Task.newBuilder().setTaskId("1").setBufferId("2").build());
+        while (pages.hasNext()) {
+            System.out.println(pages.next());
+        }
     }
 }

@@ -110,9 +110,12 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClientItf get(LocalMemoryContext systemMemoryContext)
+    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
     {
-        return new ExchangeClient(
+        if (true /** grpc.enabled */) {
+            return new GrpcExchangeClient();
+        }
+        return new HttpExchangeClient(
                 maxBufferedBytes,
                 maxResponseSize,
                 concurrentRequestMultiplier,

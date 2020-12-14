@@ -58,6 +58,7 @@ import io.prestosql.statestore.StateStoreLauncher;
 import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.utils.HetuConfig;
+import nova.hetu.GrpcServer;
 import org.weakref.jmx.guice.MBeanModule;
 
 import java.io.IOException;
@@ -125,6 +126,8 @@ public class PrestoServer
                 new WarningCollectorModule());
 
         modules.addAll(getAdditionalModules());
+
+        GrpcServer.start();
 
         Bootstrap app = new Bootstrap(modules.build());
 

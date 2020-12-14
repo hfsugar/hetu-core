@@ -25,7 +25,7 @@ import io.prestosql.client.QueryResults;
 import io.prestosql.client.QueryStatusInfo;
 import io.prestosql.execution.QueryManager;
 import io.prestosql.memory.context.SimpleLocalMemoryContext;
-import io.prestosql.operator.ExchangeClientItf;
+import io.prestosql.operator.ExchangeClient;
 import io.prestosql.operator.ExchangeClientSupplier;
 import io.prestosql.server.ForStatementResource;
 import io.prestosql.spi.QueryId;
@@ -188,7 +188,7 @@ public class ExecutingStatementResource
         }
 
         query = queries.computeIfAbsent(queryId, id -> {
-            ExchangeClientItf exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), ExecutingStatementResource.class.getSimpleName()));
+            ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), ExecutingStatementResource.class.getSimpleName()));
             return Query.create(
                     session,
                     slug,

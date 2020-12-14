@@ -160,7 +160,7 @@ public class MergeOperator
         checkState(!blockedOnSplits.isDone(), "noMoreSplits has been called already");
 
         URI location = ((RemoteSplit) split.getConnectorSplit()).getLocation();
-        ExchangeClientItf exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
+        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
         exchangeClient.addLocation(location);
         exchangeClient.setNoMoreLocation();
         pageProducers.add(exchangeClient.pages()

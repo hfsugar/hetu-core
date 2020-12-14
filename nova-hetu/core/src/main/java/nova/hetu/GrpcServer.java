@@ -21,21 +21,27 @@ import org.apache.log4j.Logger;
 
 import java.io.IOException;
 
-public class Hetu
+public class GrpcServer
 {
-    private static Logger log = Logger.getLogger(Hetu.class);
+    private static Logger log = Logger.getLogger(GrpcServer.class);
 
-    private Hetu() {}
+    private GrpcServer() {}
 
     public static void main(String[] args)
+    {
+        start();
+    }
+
+    public static void start()
     {
         addTestMasters();
         int i = 0;
         while (i < 10) {
             try {
                 Cluster.Builder()
-                        .addService(new ShuffleService(null, null, null, null))
+                        .addService(new ShuffleService())
                         .build().start();
+                break;
             }
             catch (IOException e) { //port is occupied
                 log.debug("Port: " + ClusterConfig.config.local.port + " is in use");

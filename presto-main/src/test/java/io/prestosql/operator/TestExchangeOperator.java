@@ -83,7 +83,7 @@ public class TestExchangeOperator
         pageBufferClientCallbackExecutor = Executors.newSingleThreadExecutor();
         httpClient = new TestingHttpClient(new TestingExchangeHttpClientHandler(taskBuffers), scheduler);
 
-        exchangeClientSupplier = (systemMemoryUsageListener) -> new ExchangeClient(
+        exchangeClientSupplier = (systemMemoryUsageListener) -> new HttpExchangeClient(
                 new DataSize(32, MEGABYTE),
                 new DataSize(10, MEGABYTE),
                 3,

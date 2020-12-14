@@ -47,7 +47,7 @@ import io.prestosql.execution.QueryState;
 import io.prestosql.execution.QueryStats;
 import io.prestosql.execution.StageInfo;
 import io.prestosql.execution.TaskInfo;
-import io.prestosql.operator.ExchangeClientItf;
+import io.prestosql.operator.ExchangeClient;
 import io.prestosql.spi.ErrorCode;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PageBuilder;
@@ -111,7 +111,7 @@ public class Query
     private final String slug;
 
     @GuardedBy("this")
-    private final ExchangeClientItf exchangeClient;
+    private final ExchangeClient exchangeClient;
 
     private final Executor resultsProcessorExecutor;
     private final ScheduledExecutorService timeoutExecutor;
@@ -173,7 +173,7 @@ public class Query
             Session session,
             String slug,
             QueryManager queryManager,
-            ExchangeClientItf exchangeClient,
+            ExchangeClient exchangeClient,
             Executor dataProcessorExecutor,
             ScheduledExecutorService timeoutExecutor,
             BlockEncodingSerde blockEncodingSerde)
@@ -196,7 +196,7 @@ public class Query
             Session session,
             String slug,
             QueryManager queryManager,
-            ExchangeClientItf exchangeClient,
+            ExchangeClient exchangeClient,
             Executor resultsProcessorExecutor,
             ScheduledExecutorService timeoutExecutor,
             BlockEncodingSerde blockEncodingSerde)
@@ -292,6 +292,9 @@ public class Query
         return clearTransactionId;
     }
 
+    /**
+     * Wait for the final results to be returned to SQL submission entry point
+     */
     public synchronized ListenableFuture<QueryResults> waitForResults(long token, UriInfo uriInfo, String scheme, Duration wait, DataSize targetResultSize)
     {
         // before waiting, check if this request has already been processed and cached

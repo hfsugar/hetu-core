@@ -56,5 +56,11 @@
             <artifactId>grpc-stub</artifactId>
             <version>${grpc.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>1.34.0</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 </project>

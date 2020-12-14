@@ -31,7 +31,7 @@ import io.prestosql.memory.context.SimpleLocalMemoryContext;
 import io.prestosql.metadata.Catalog;
 import io.prestosql.metadata.CatalogManager;
 import io.prestosql.metadata.SessionPropertyManager;
-import io.prestosql.operator.ExchangeClientItf;
+import io.prestosql.operator.ExchangeClient;
 import io.prestosql.operator.ExchangeClientSupplier;
 import io.prestosql.server.ForStatementResource;
 import io.prestosql.server.protocol.Query;
@@ -256,7 +256,7 @@ public class AutoVacuumScanner
             return null;
         }
 
-        ExchangeClientItf exchangeClient = this.exchangeClientSupplier.get(
+        ExchangeClient exchangeClient = this.exchangeClientSupplier.get(
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(),
                         DataCenterStatementResource.class.getSimpleName()));
         return Query.create(session, slug, queryManager, exchangeClient, directExecutor(), timeoutExecutor,

@@ -14,48 +14,143 @@
  */
 package nove.hetu.executor;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
-import io.airlift.concurrent.BoundedExecutor;
-import io.airlift.units.DataSize;
+import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
-import io.prestosql.execution.TaskId;
-import io.prestosql.execution.TaskManager;
-import io.prestosql.execution.buffer.BufferResult;
-import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.metadata.SessionPropertyManager;
+import io.hetu.core.transport.execution.buffer.PageCodecMarker;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.hetu.core.transport.execution.buffer.SerializedPage;
+import io.prestosql.spi.Page;
 import nova.hetu.executor.ExecutorOuterClass;
 import nova.hetu.executor.ShuffleGrpc;
+import org.apache.log4j.Logger;
 
-import java.util.concurrent.ScheduledExecutorService;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
+import static io.airlift.slice.Slices.EMPTY_SLICE;
+
+/**
+ * A gRpc service to transfer serialized pages in a streaming manner
+ * All retry, backoff capabilities will be provided by gRpc
+ */
 public class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
-    private TaskManager taskManager;
-    private SessionPropertyManager sessionPropertyManager;
-    BoundedExecutor responseExecutor;
-    ScheduledExecutorService timeoutExecutor;
+    private static ConcurrentHashMap<String, Out> taskOutputMap = new ConcurrentHashMap<>();
+
+    private static Logger log = Logger.getLogger(ShuffleService.class);
 
     @Inject
-    public ShuffleService(
-            TaskManager taskManager,
-            SessionPropertyManager sessionPropertyManager,
-            BoundedExecutor responseExecutor,
-            ScheduledExecutorService timeoutExecutor)
-    {
-        this.taskManager = taskManager;
-        this.sessionPropertyManager = sessionPropertyManager;
-    }
+    public ShuffleService() {}
 
+    /**
+     * Down stream operators call this method via gRpc to retrieve the output of the task
+     *
+     * @param request
+     * @param responseObserver
+     */
     @Override
     public void getResult(ExecutorOuterClass.Task request, StreamObserver<ExecutorOuterClass.Page> responseObserver)
     {
-        TaskId taskId = TaskId.valueOf(request.getTaskId());
-        OutputBuffers.OutputBufferId outputBufferId = OutputBuffers.OutputBufferId.fromString(request.getBufferId());
-        DataSize max = DataSize.valueOf(request.getMaxSize());
-        long token = request.getToken();
-        long start = System.nanoTime();
-        ListenableFuture<BufferResult> bufferResultFuture = taskManager.getTaskResults(taskId, outputBufferId, token, max);
+        Out out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
+        if (out == null) {
+            throw new RuntimeException("invalid task: " + request.getTaskId());
+        }
+        SerializedPage page;
+        try {
+            while (true) {
+                page = out.take();
+                if (page == Out.EOF) {
+                    break;
+                }
+                responseObserver.onNext(transform(page));
+                log.info("request " + request + "page: " + page);
+            }
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        finally {
+            taskOutputMap.remove(out.id);
+            responseObserver.onCompleted();
+        }
+    }
+
+    private static String toKey(String taskid, String bufferid)
+    {
+        return taskid + "/" + bufferid;
+    }
+
+    private ExecutorOuterClass.Page transform(SerializedPage page)
+    {
+        return ExecutorOuterClass.Page.newBuilder()
+                .setSliceArray(ByteString.copyFrom(page.getSliceArray()))
+                .setPageCodecMarkers(page.getPageCodecMarkers())
+                .setPositionCount(page.getPositionCount())
+                .build();
+    }
+
+    /**
+     * Returns a OutStream which will be use to sent the data to be returned to service caller
+     *
+     * @return
+     */
+    public static Out getOutStream(String taskid, String bufferid, PagesSerde serde)
+    {
+        String key = toKey(taskid, bufferid);
+        Out out = taskOutputMap.get(key);
+        if (out == null) {
+            out = new Out(key, serde);
+            Out temp = taskOutputMap.putIfAbsent(key, out);
+            out = temp != null ? temp : out;
+        }
+        return out;
+    }
+
+    /**
+     * must be used in a the following way to ensure proper handling of releasing the resources
+     * try (Out out = ShuffleService.getOutStream(task)) {
+     * out.write(page);
+     * }
+     */
+    public static class Out
+            implements Closeable
+    {
+        static final SerializedPage EOF = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
+        private final PagesSerde serde;
+        ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
+        String id;
+
+        private Out(String id, PagesSerde serde)
+        {
+            this.id = id;
+            this.serde = serde;
+        }
+
+        public SerializedPage take()
+                throws InterruptedException
+        {
+            return queue.take();
+        }
+
+        /**
+         * write out the page synchronously
+         *
+         * @param page
+         */
+        public void write(Page page)
+        {
+            queue.add(serde.serialize(page));
+        }
+
+        @Override
+        public void close()
+                throws IOException
+        {
+            queue.add(EOF);
+        }
     }
 }
