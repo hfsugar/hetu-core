@@ -14,7 +14,6 @@
 package io.prestosql.operator;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
@@ -25,27 +24,28 @@ import nove.hetu.executor.ShuffleService;
 import java.util.List;
 import java.util.function.Function;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
 public class TaskOutputOperator
         implements Operator
 {
-    private final ShuffleService.Out output;
-
     public static class TaskOutputFactory
             implements OutputFactory
     {
         private final OutputBuffer outputBuffer;
+        private final List<ShuffleService.Out> outputStreams;
 
-        public TaskOutputFactory(OutputBuffer outputBuffer)
+        public TaskOutputFactory(OutputBuffer outputBuffer, List<ShuffleService.Out> outputStreams)
         {
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
         }
 
         @Override
         public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pageLayoutProcessor, PagesSerdeFactory serdeFactory)
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, serdeFactory);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, outputStreams);
         }
     }
 
@@ -55,23 +55,23 @@ public class TaskOutputOperator
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final OutputBuffer outputBuffer;
+        private final List<ShuffleService.Out> outputStreams;
         private final Function<Page, Page> pagePreprocessor;
-        private final PagesSerdeFactory serdeFactory;
 
-        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Out> outputStreams)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
+            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
         }
 
         @Override
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
-            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, outputStreams);
         }
 
         @Override
@@ -82,23 +82,24 @@ public class TaskOutputOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, outputStreams);
         }
     }
 
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
+    private final ShuffleService.Out outputStream;
     private final Function<Page, Page> pagePreprocessor;
-    private final PagesSerde serde;
     private boolean finished;
 
-    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Out> outputStreams)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
-        this.output = ShuffleService.getOutStream(operatorContext.getDriverContext().getTaskId().toString(), String.valueOf(0), serdeFactory.createPagesSerde());
+        requireNonNull(outputStreams, "outputStreams is null");
+        checkArgument(outputStreams.size() == 1, "there should be only 1 output stream");
+        this.outputStream = outputStreams.get(0);
     }
 
     @Override
@@ -144,7 +145,7 @@ public class TaskOutputOperator
 
         if (true /** grpc.enabled = true */) {
             //redirect to grpc shuffle service
-            output.write(page);
+            outputStream.write(page);
         }
         else {
             outputBuffer.enqueue(page);

@@ -39,6 +39,7 @@ import io.prestosql.operator.StageExecutionDescriptor;
 import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nove.hetu.executor.ShuffleService;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -112,6 +113,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
+    private final List<ShuffleService.Out> outputStreams;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -145,6 +147,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<ShuffleService.Out> outputStreams,
             List<TaskSource> sources,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
@@ -155,6 +158,7 @@ public class SqlTaskExecution
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
+                outputStreams,
                 localExecutionPlan,
                 taskExecutor,
                 queryMonitor,
@@ -172,6 +176,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<ShuffleService.Out> outputStreams,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -181,6 +186,7 @@ public class SqlTaskExecution
         this.taskId = taskStateMachine.getTaskId();
         this.taskContext = requireNonNull(taskContext, "taskContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+        this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
 
         this.taskExecutor = requireNonNull(taskExecutor, "driverExecutor is null");
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
@@ -569,6 +575,9 @@ public class SqlTaskExecution
 
                         splitMonitor.splitCompletedEvent(taskId, getDriverStats());
                     }
+                    catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
 
                 @Override
@@ -582,6 +591,9 @@ public class SqlTaskExecution
 
                         // fire failed event with cause
                         splitMonitor.splitFailedEvent(taskId, getDriverStats(), cause);
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
 
@@ -638,11 +650,20 @@ public class SqlTaskExecution
 
         // no more output will be created
         outputBuffer.setNoMorePages();
+        for (ShuffleService.Out outputStream : outputStreams) {
+            outputStream.sendEof();
+        }
+
+        for (ShuffleService.Out outputStream : outputStreams) {
+            while (!outputStream.isClosed()) {
+                // DO NOTHING
+            }
+        }
 
         // are there still pages in the output buffer
-        if (!outputBuffer.isFinished()) {
-            return;
-        }
+//        if (!outputBuffer.isFinished()) {
+//            return;
+//        }
 
         // Cool! All done!
         taskStateMachine.finished();
@@ -1086,6 +1107,7 @@ public class SqlTaskExecution
         {
             Driver driver;
             synchronized (this) {
+                System.out.println("Driver closed: " + getInfo());
                 closed = true;
                 driver = this.driver;
             }
@@ -1220,6 +1242,9 @@ public class SqlTaskExecution
 
         public synchronized void incrementRemainingDriver(Lifespan lifespan)
         {
+            if (this.taskContext.getTaskId().toString().contains(".2.0")) {
+                System.out.println("Increment Driver " + this.taskContext.getTaskId().toString());
+            }
             checkState(!isNoMoreDriverRunners(lifespan), "Cannot increment remainingDriver for Lifespan %s. NoMoreSplits is set.", lifespan);
             per(lifespan).remainingDriver++;
             overallRemainingDriver++;
@@ -1227,6 +1252,9 @@ public class SqlTaskExecution
 
         public synchronized void decrementRemainingDriver(Lifespan lifespan)
         {
+            if (this.taskContext.getTaskId().toString().contains(".2.0")) {
+                System.out.println("Decrement Driver " + this.taskContext.getTaskId().toString());
+            }
             checkState(per(lifespan).remainingDriver > 0, "Cannot decrement remainingDriver for Lifespan %s. Value is 0.", lifespan);
             per(lifespan).remainingDriver--;
             overallRemainingDriver--;

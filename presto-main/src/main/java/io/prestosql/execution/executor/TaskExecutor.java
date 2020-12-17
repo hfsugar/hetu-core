@@ -489,14 +489,17 @@ public class TaskExecutor
                         }
 
                         if (split.isFinished()) {
+                            log.info("Driver finished on " + split.getInfo());
                             log.debug("%s is finished", split.getInfo());
                             splitFinished(split);
                         }
                         else {
                             if (blocked.isDone()) {
+                                log.info("Driver re-queued " + split.getInfo());
                                 waitingSplits.offer(split);
                             }
                             else {
+                                log.info("Driver blocked on " + split.getInfo());
                                 blockedSplits.put(split, blocked);
                                 blocked.addListener(() -> {
                                     blockedSplits.remove(split);

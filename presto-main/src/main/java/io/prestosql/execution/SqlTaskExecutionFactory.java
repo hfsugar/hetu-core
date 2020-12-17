@@ -24,6 +24,7 @@ import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
+import nove.hetu.executor.ShuffleService;
 
 import java.util.List;
 import java.util.OptionalInt;
@@ -60,7 +61,7 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
+    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, List<ShuffleService.Out> outputStreams, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
     {
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
@@ -79,7 +80,8 @@ public class SqlTaskExecutionFactory
                         fragment.getPartitioningScheme(),
                         fragment.getStageExecutionDescriptor(),
                         fragment.getPartitionedSources(),
-                        outputBuffer);
+                        outputBuffer,
+                        outputStreams);
             }
             catch (Throwable e) {
                 // planning failed
@@ -92,6 +94,7 @@ public class SqlTaskExecutionFactory
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
+                outputStreams,
                 sources,
                 localExecutionPlan,
                 taskExecutor,

@@ -21,6 +21,7 @@ import io.airlift.http.server.HttpServerConfig;
 import io.airlift.http.server.HttpServerInfo;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.GroupByHashPageIndexerFactory;
 import io.prestosql.PagesIndexPageSorter;
 import io.prestosql.Session;
@@ -184,6 +185,7 @@ import io.prestosql.transaction.TransactionManagerConfig;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
+import nove.hetu.executor.ShuffleService;
 import org.intellij.lang.annotations.Language;
 import org.weakref.jmx.MBeanExporter;
 import org.weakref.jmx.testing.TestingMBeanServer;
@@ -779,6 +781,7 @@ public class LocalQueryRunner
                 subplan.getFragment().getPartitioningScheme().getOutputLayout(),
                 plan.getTypes(),
                 subplan.getFragment().getPartitionedSources(),
+                ImmutableList.of(ShuffleService.getOutStream("task-1", "0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde())),
                 outputFactory);
 
         // generate sources

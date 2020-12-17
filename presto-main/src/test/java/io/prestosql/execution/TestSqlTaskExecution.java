@@ -58,6 +58,7 @@ import io.prestosql.spi.type.Type;
 import io.prestosql.spiller.SpillSpaceTracker;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nove.hetu.executor.ShuffleService;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -146,12 +147,13 @@ public class TestSqlTaskExecution
             //
             // See #testComplex for all the bahaviors that are tested. Not all of them apply here.
             TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
+            final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     1,
                     TABLE_SCAN_NODE_ID,
                     outputBuffer,
                     Function.identity(),
-                    new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false));
+                    ImmutableList.of(ShuffleService.getOutStream(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde())));
             LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
                     ImmutableList.of(new DriverFactory(
                             0,
@@ -167,6 +169,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
+                    ImmutableList.of(ShuffleService.getOutStream(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde())),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,
@@ -368,12 +371,13 @@ public class TestSqlTaskExecution
                     301,
                     values3NodeId,
                     ImmutableList.of(new Page(createStringsBlock("x", "y", "multiplier3"))));
+            final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     4,
                     joinCNodeId,
                     outputBuffer,
                     Function.identity(),
-                    new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false));
+                    ImmutableList.of(ShuffleService.getOutStream(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde())));
             TestingCrossJoinOperatorFactory joinOperatorFactoryA = new TestingCrossJoinOperatorFactory(2, joinANodeId, buildStatesA);
             TestingCrossJoinOperatorFactory joinOperatorFactoryB = new TestingCrossJoinOperatorFactory(102, joinBNodeId, buildStatesB);
             TestingCrossJoinOperatorFactory joinOperatorFactoryC = new TestingCrossJoinOperatorFactory(3, joinCNodeId, buildStatesC);
@@ -418,6 +422,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
+                    ImmutableList.of(ShuffleService.getOutStream(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde())),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,

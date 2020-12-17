@@ -24,8 +24,6 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -78,7 +76,7 @@ public class GrpcExchangeClient
     @Override
     public boolean isFinished()
     {
-        return getResult.isDone();
+        return getResult != null && getResult.isDone();
     }
 
     @Override
@@ -91,10 +89,11 @@ public class GrpcExchangeClient
     @Override
     public ListenableFuture<?> isBlocked()
     {
-        if (isClosed()) {
-            return Futures.immediateFuture(true);
-        }
-        return SettableFuture.create();
+        return Futures.immediateFuture(true);
+//        if (isClosed()) {
+//            return Futures.immediateFuture(true);
+//        }
+//        return SettableFuture.create();
     }
 
     @Override

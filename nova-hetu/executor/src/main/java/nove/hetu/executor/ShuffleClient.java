@@ -53,6 +53,16 @@ public class ShuffleClient
             @Override
             public void run()
             {
+                try {
+                    getResults();
+                }
+                catch (Exception e) {
+                    log.error(e.getMessage());
+                }
+            }
+
+            private void getResults()
+            {
                 //starts a gRpc service client
                 //FIXME: should share channel
                 synchronized (this) {
@@ -82,9 +92,10 @@ public class ShuffleClient
 
                     SerializedPage spage = new SerializedPage(page.getSliceArray().toByteArray(), (byte) page.getPageCodecMarkers(), page.getPositionCount(), page.getUncompressedSizeInBytes());
                     pageOutputBuffer.add(spage);
-                    log.info("request " + task + " page: " + page);
+                    log.info("Add to pageOutputBuffer " + task + " page: " + page);
                 }
 
+                log.info("Received all pages for " + taskid + "-" + bufferid);
                 //channel.shutdown();
             }
         });

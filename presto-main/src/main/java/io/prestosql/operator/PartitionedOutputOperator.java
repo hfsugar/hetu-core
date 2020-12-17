@@ -55,6 +55,7 @@ public class PartitionedOutputOperator
         private final List<Integer> partitionChannels;
         private final List<Optional<NullableValue>> partitionConstants;
         private final OutputBuffer outputBuffer;
+        private final List<ShuffleService.Out> outputStreams;
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final DataSize maxMemory;
@@ -66,6 +67,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
+                List<ShuffleService.Out> outputStreams,
                 DataSize maxMemory)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
@@ -74,6 +76,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
 
@@ -96,6 +99,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
+                    outputStreams,
                     serdeFactory,
                     maxMemory);
         }
@@ -114,6 +118,7 @@ public class PartitionedOutputOperator
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final OutputBuffer outputBuffer;
+        private final List<ShuffleService.Out> outputStreams;
         private final PagesSerdeFactory serdeFactory;
         private final DataSize maxMemory;
 
@@ -128,6 +133,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
+                List<ShuffleService.Out> outputStreams,
                 PagesSerdeFactory serdeFactory,
                 DataSize maxMemory)
         {
@@ -141,6 +147,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
             this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
@@ -159,6 +166,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
+                    outputStreams,
                     serdeFactory,
                     maxMemory);
         }
@@ -182,6 +190,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
+                    outputStreams,
                     serdeFactory,
                     maxMemory);
         }
@@ -204,6 +213,7 @@ public class PartitionedOutputOperator
             boolean replicatesAnyRow,
             OptionalInt nullChannel,
             OutputBuffer outputBuffer,
+            List<ShuffleService.Out> outputStreams,
             PagesSerdeFactory serdeFactory,
             DataSize maxMemory)
     {
@@ -226,6 +236,7 @@ public class PartitionedOutputOperator
                 replicatesAnyRow,
                 nullChannel,
                 outputBuffer,
+                outputStreams,
                 serdeFactory,
                 sourceTypes,
                 maxMemory,
@@ -306,6 +317,7 @@ public class PartitionedOutputOperator
     private static class PagePartitioner
     {
         private final OutputBuffer outputBuffer;
+        private final List<ShuffleService.Out> outputStreams;
         private final List<Type> sourceTypes;
         private final PartitionFunction partitionFunction;
         private final List<Integer> partitionChannels;
@@ -317,7 +329,6 @@ public class PartitionedOutputOperator
         private final AtomicLong rowsAdded = new AtomicLong();
         private final AtomicLong pagesAdded = new AtomicLong();
         private boolean hasAnyRowBeenReplicated;
-        private final HashMap<Integer, ShuffleService.Out> gRpcOutMap;
 
         public PagePartitioner(
                 PartitionFunction partitionFunction,
@@ -326,6 +337,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
+                List<ShuffleService.Out> outputStreams,
                 PagesSerdeFactory serdeFactory,
                 List<Type> sourceTypes,
                 DataSize maxMemory, HashMap<Integer, ShuffleService.Out> gRpcOutMap)
@@ -338,6 +350,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
             this.sourceTypes = requireNonNull(sourceTypes, "sourceTypes is null");
             this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
 
@@ -349,8 +362,6 @@ public class PartitionedOutputOperator
             for (int i = 0; i < partitionCount; i++) {
                 pageBuilders[i] = PageBuilder.withMaxPageSize(pageSize, sourceTypes);
             }
-
-            this.gRpcOutMap = gRpcOutMap;
         }
 
         public ListenableFuture<?> isFull()
@@ -443,7 +454,7 @@ public class PartitionedOutputOperator
                     partitionPageBuilder.reset();
 
                     outputBuffer.enqueue(partition, pagePartition);
-                    gRpcOutMap.get(partition).write(pagePartition);
+                    outputStreams.get(partition).write(pagePartition);
                     pagesAdded.incrementAndGet();
                     rowsAdded.addAndGet(pagePartition.getPositionCount());
                 }

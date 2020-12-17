@@ -25,8 +25,6 @@ import nova.hetu.executor.ExecutorOuterClass;
 import nova.hetu.executor.ShuffleGrpc;
 import org.apache.log4j.Logger;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,15 +53,23 @@ public class ShuffleService
     @Override
     public void getResult(ExecutorOuterClass.Task request, StreamObserver<ExecutorOuterClass.Page> responseObserver)
     {
+        log.info("Get result for " + request.getTaskId() + "-" + request.getBufferId());
         Out out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
-        if (out == null) {
-            throw new RuntimeException("invalid task: " + request.getTaskId());
+        while (out == null) {
+            out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
+            if (out != null) {
+                log.info("Got output stream after retry " + request.getTaskId() + "-" + request.getBufferId());
+            }
         }
+//        if (out == null) {
+//            throw new RuntimeException("invalid task: " + request.getTaskId());
+//        }
         SerializedPage page;
         try {
             while (true) {
                 page = out.take();
                 if (page == Out.EOF) {
+                    out.eofSent = true;
                     break;
                 }
                 responseObserver.onNext(transform(page));
@@ -76,6 +82,7 @@ public class ShuffleService
         finally {
             taskOutputMap.remove(out.id);
             responseObserver.onCompleted();
+            log.info("Finished sending pages for " + request.getTaskId() + "-" + request.getBufferId());
         }
     }
 
@@ -90,6 +97,7 @@ public class ShuffleService
                 .setSliceArray(ByteString.copyFrom(page.getSliceArray()))
                 .setPageCodecMarkers(page.getPageCodecMarkers())
                 .setPositionCount(page.getPositionCount())
+                .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes())
                 .build();
     }
 
@@ -100,6 +108,7 @@ public class ShuffleService
      */
     public static Out getOutStream(String taskid, String bufferid, PagesSerde serde)
     {
+        log.info("Getting output stream for: " + taskid + "-" + bufferid);
         String key = toKey(taskid, bufferid);
         Out out = taskOutputMap.get(key);
         if (out == null) {
@@ -117,12 +126,12 @@ public class ShuffleService
      * }
      */
     public static class Out
-            implements Closeable
     {
         static final SerializedPage EOF = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
         private final PagesSerde serde;
         ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
         String id;
+        boolean eofSent;
 
         private Out(String id, PagesSerde serde)
         {
@@ -146,11 +155,15 @@ public class ShuffleService
             queue.add(serde.serialize(page));
         }
 
-        @Override
-        public void close()
-                throws IOException
+        public void sendEof()
         {
+            log.info("Closing output stream for " + id);
             queue.add(EOF);
+        }
+
+        public boolean isClosed()
+        {
+            return eofSent;
         }
     }
 }

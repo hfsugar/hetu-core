@@ -21,6 +21,7 @@ import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
+import io.airlift.log.Logger;
 import io.airlift.stats.TimeStat;
 import io.airlift.units.Duration;
 import io.prestosql.Session;
@@ -126,6 +127,8 @@ public class SqlQueryScheduler
     private final DynamicFilterService dynamicFilterService;
     private final HeuristicIndexerManager heuristicIndexerManager;
     private final Session session;
+
+    private static final Logger LOG = Logger.get(SqlQueryScheduler.class);
 
     public static SqlQueryScheduler createSqlQueryScheduler(
             QueryStateMachine queryStateMachine,
@@ -572,6 +575,7 @@ public class SqlQueryScheduler
                     // modify parent and children based on the results of the scheduling
                     if (result.isFinished()) {
                         stage.schedulingComplete();
+                        LOG.info("Scheduled complete for stage " + stage.getStageId());
                     }
                     else if (!result.getBlocked().isDone()) {
                         blockedStages.add(result.getBlocked());
