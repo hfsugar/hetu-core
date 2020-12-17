@@ -131,7 +131,7 @@ public class BenchmarkPartitionedOutputOperator
                     false,
                     OptionalInt.empty(),
                     buffer,
-                    ImmutableList.of(ShuffleService.getOutStream("task-1", "0", serdeFactory.createPagesSerde())),
+                    ImmutableList.of(ShuffleService.getStream("task-1", "0", serdeFactory.createPagesSerde())),
                     new DataSize(1, GIGABYTE));
             return (PartitionedOutputOperator) operatorFactory
                     .createOutputOperator(0, new PlanNodeId("plan-node-0"), TYPES, Function.identity(), serdeFactory)

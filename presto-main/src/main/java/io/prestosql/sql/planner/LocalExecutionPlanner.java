@@ -407,7 +407,7 @@ public class LocalExecutionPlanner
             StageExecutionDescriptor stageExecutionDescriptor,
             List<PlanNodeId> partitionedSourceOrder,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Out> outputStreams)
+            List<ShuffleService.Stream> outputStreams)
     {
         List<Symbol> outputLayout = partitioningScheme.getOutputLayout();
 
@@ -491,7 +491,7 @@ public class LocalExecutionPlanner
             List<Symbol> outputLayout,
             TypeProvider types,
             List<PlanNodeId> partitionedSourceOrder,
-            List<ShuffleService.Out> outputStreams,
+            List<ShuffleService.Stream> outputStreams,
             OutputFactory outputOperatorFactory)
     {
         Session session = taskContext.getSession();

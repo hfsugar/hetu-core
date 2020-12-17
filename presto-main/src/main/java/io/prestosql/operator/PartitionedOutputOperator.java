@@ -55,7 +55,7 @@ public class PartitionedOutputOperator
         private final List<Integer> partitionChannels;
         private final List<Optional<NullableValue>> partitionConstants;
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Out> outputStreams;
+        private final List<ShuffleService.Stream> outputStreams;
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final DataSize maxMemory;
@@ -67,7 +67,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Out> outputStreams,
+                List<ShuffleService.Stream> outputStreams,
                 DataSize maxMemory)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
@@ -118,7 +118,7 @@ public class PartitionedOutputOperator
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Out> outputStreams;
+        private final List<ShuffleService.Stream> outputStreams;
         private final PagesSerdeFactory serdeFactory;
         private final DataSize maxMemory;
 
@@ -133,7 +133,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Out> outputStreams,
+                List<ShuffleService.Stream> outputStreams,
                 PagesSerdeFactory serdeFactory,
                 DataSize maxMemory)
         {
@@ -213,19 +213,19 @@ public class PartitionedOutputOperator
             boolean replicatesAnyRow,
             OptionalInt nullChannel,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Out> outputStreams,
+            List<ShuffleService.Stream> outputStreams,
             PagesSerdeFactory serdeFactory,
             DataSize maxMemory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
 
-        HashMap<Integer, ShuffleService.Out> gRpcOutMap = new HashMap<Integer, ShuffleService.Out>();
+        HashMap<Integer, ShuffleService.Stream> gRpcOutMap = new HashMap<Integer, ShuffleService.Stream>();
 
         for (int i = 0; i < partitionFunction.getPartitionCount(); i++) {
             //initialize gRpc Out objects in a map;
             String taskid = operatorContext.getDriverContext().getTaskId().toString();
-            ShuffleService.Out out = ShuffleService.getOutStream(taskid, String.valueOf(i), serdeFactory.createPagesSerde()); //default bufferid is set to 0;
+            ShuffleService.Stream out = ShuffleService.getStream(taskid, String.valueOf(i), serdeFactory.createPagesSerde()); //default bufferid is set to 0;
             gRpcOutMap.put(i, out);
         }
 
@@ -317,7 +317,7 @@ public class PartitionedOutputOperator
     private static class PagePartitioner
     {
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Out> outputStreams;
+        private final List<ShuffleService.Stream> outputStreams;
         private final List<Type> sourceTypes;
         private final PartitionFunction partitionFunction;
         private final List<Integer> partitionChannels;
@@ -337,10 +337,10 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Out> outputStreams,
+                List<ShuffleService.Stream> outputStreams,
                 PagesSerdeFactory serdeFactory,
                 List<Type> sourceTypes,
-                DataSize maxMemory, HashMap<Integer, ShuffleService.Out> gRpcOutMap)
+                DataSize maxMemory, HashMap<Integer, ShuffleService.Stream> gRpcOutMap)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
             this.partitionChannels = requireNonNull(partitionChannels, "partitionChannels is null");

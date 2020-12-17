@@ -398,7 +398,7 @@ public class SqlTask
                 taskExecution = taskHolder.getTaskExecution();
                 if (taskExecution == null) {
                     checkState(fragment.isPresent(), "fragment must be present");
-                    List<ShuffleService.Out> outputStreams = createOutputStreams(taskStateMachine.getTaskId(), totalPartitions);
+                    List<ShuffleService.Stream> outputStreams = createOutputStreams(taskStateMachine.getTaskId(), totalPartitions);
                     loadDCCatalogForUpdateTask(metadata, sources);
                     taskExecution = sqlTaskExecutionFactory.create(session, queryContext, taskStateMachine, outputBuffer, outputStreams, fragment.get(), sources, totalPartitions);
                     taskHolderReference.compareAndSet(taskHolder, new TaskHolder(taskExecution));
@@ -421,12 +421,12 @@ public class SqlTask
         return getTaskInfo();
     }
 
-    private List<ShuffleService.Out> createOutputStreams(TaskId taskId, OptionalInt totalPartitions)
+    private List<ShuffleService.Stream> createOutputStreams(TaskId taskId, OptionalInt totalPartitions)
     {
-        List<ShuffleService.Out> outStreams = new ArrayList<>();
+        List<ShuffleService.Stream> outStreams = new ArrayList<>();
         int numPartitions = totalPartitions.orElse(1); // default to 1 partition
         for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
-            outStreams.add(ShuffleService.getOutStream(taskId.toString(), String.valueOf(partition), serde));
+            outStreams.add(ShuffleService.getStream(taskId.toString(), String.valueOf(partition), serde));
         }
         return outStreams;
     }

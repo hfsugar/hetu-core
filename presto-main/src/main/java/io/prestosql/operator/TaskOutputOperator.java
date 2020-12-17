@@ -34,9 +34,9 @@ public class TaskOutputOperator
             implements OutputFactory
     {
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Out> outputStreams;
+        private final List<ShuffleService.Stream> outputStreams;
 
-        public TaskOutputFactory(OutputBuffer outputBuffer, List<ShuffleService.Out> outputStreams)
+        public TaskOutputFactory(OutputBuffer outputBuffer, List<ShuffleService.Stream> outputStreams)
         {
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
@@ -55,10 +55,10 @@ public class TaskOutputOperator
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Out> outputStreams;
+        private final List<ShuffleService.Stream> outputStreams;
         private final Function<Page, Page> pagePreprocessor;
 
-        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Out> outputStreams)
+        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Stream> outputStreams)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -88,11 +88,11 @@ public class TaskOutputOperator
 
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
-    private final ShuffleService.Out outputStream;
+    private final ShuffleService.Stream outputStream;
     private final Function<Page, Page> pagePreprocessor;
     private boolean finished;
 
-    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Out> outputStreams)
+    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Stream> outputStreams)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");

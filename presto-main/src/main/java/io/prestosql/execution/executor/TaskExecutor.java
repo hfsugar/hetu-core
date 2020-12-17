@@ -495,7 +495,7 @@ public class TaskExecutor
                         }
                         else {
                             if (blocked.isDone()) {
-                                log.info("Driver re-queued " + split.getInfo());
+                                //log.info("Driver re-queued " + split.getInfo());
                                 waitingSplits.offer(split);
                             }
                             else {

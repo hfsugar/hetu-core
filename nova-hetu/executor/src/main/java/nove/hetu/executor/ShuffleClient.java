@@ -14,18 +14,19 @@
  */
 package nove.hetu.executor;
 
+import com.google.common.util.concurrent.SettableFuture;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import nova.hetu.executor.ExecutorOuterClass;
 import nova.hetu.executor.ShuffleGrpc;
 import org.apache.log4j.Logger;
 
-import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class ShuffleClient
 {
@@ -36,6 +37,15 @@ public class ShuffleClient
 
     private ShuffleClient() {}
 
+    private static synchronized ManagedChannel getOrCreateChannel(String host, int port) {
+        if (channel == null) {
+            channel = ManagedChannelBuilder
+                    .forAddress(host, port)
+                    .usePlaintext(/** FIXME: TLS disabled */)
+                    .build();
+        }
+        return channel;
+    }
     /**
      * Get the execution results identified by a taskid and bufferid
      * The method runs in a separate thread. The SerializedPage is streamed back, streaming of pages terminates when there is not futher pages.
@@ -46,58 +56,62 @@ public class ShuffleClient
      * @param bufferid identifier of the partition of the task to be retrieved
      * @return
      */
-    public static Future getResults(String host, int port, String taskid, String bufferid, LinkedBlockingDeque<SerializedPage> pageOutputBuffer)
+    public static Future getResults(String host, int port, String taskid, String bufferid, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
     {
-        return executor.submit(new Runnable()
+        ManagedChannel channel = getOrCreateChannel(host, port);
+
+        SettableFuture future = SettableFuture.create();
+
+        ShuffleGrpc.ShuffleStub shuffler = ShuffleGrpc.newStub(channel);
+
+        ExecutorOuterClass.Task task = ExecutorOuterClass.Task.newBuilder()
+                .setTaskId(taskid)
+                .setBufferId(bufferid)
+                .build();
+        log.info("====================== request " + task.getTaskId() + "-" + task.getBufferId());
+
+        /**
+         * get the result in a new thread, which should add the result into the pages buffer
+         */
+        shuffler.getResult(task, new ShuffleStreamObserver(pageOutputBuffer, future));
+        return future;
+    }
+
+    private static class ShuffleStreamObserver implements StreamObserver<ExecutorOuterClass.Page>
+    {
+        LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
+        SettableFuture<Boolean> notificationFuture;
+
+        ShuffleStreamObserver(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, SettableFuture notificationFuture) {
+            this.pageOutputBuffer = pageOutputBuffer;
+            this.notificationFuture = notificationFuture;
+        }
+        int count = 0;
+
+        @Override
+        public void onNext(ExecutorOuterClass.Page page)
         {
-            @Override
-            public void run()
-            {
-                try {
-                    getResults();
-                }
-                catch (Exception e) {
-                    log.error(e.getMessage());
-                }
+            count++;
+            SerializedPage spage = new SerializedPage(page.getSliceArray().toByteArray(), (byte) page.getPageCodecMarkers(), page.getPositionCount(), page.getUncompressedSizeInBytes());
+            log.info("got page: " + Long.valueOf(new String(spage.getSliceArray())));
+            try {
+                pageOutputBuffer.put(spage);
             }
-
-            private void getResults()
-            {
-                //starts a gRpc service client
-                //FIXME: should share channel
-                synchronized (this) {
-                    if (channel == null) {
-                        channel = ManagedChannelBuilder
-                                .forAddress(host, port)
-                                .usePlaintext(/** FIXME: TLS disabled */)
-                                .build();
-                    }
-                }
-                ShuffleGrpc.ShuffleBlockingStub shuffler = ShuffleGrpc.newBlockingStub(channel);
-
-                ExecutorOuterClass.Task task = ExecutorOuterClass.Task.newBuilder()
-                        .setTaskId(taskid)
-                        .setBufferId(bufferid)
-                        .build();
-                log.info("request " + task);
-
-                /**
-                 * get the result in a new thread, which should add the result into the pages buffer
-                 */
-                Iterator<ExecutorOuterClass.Page> pages = shuffler.getResult(task);
-
-                while (pages.hasNext()) {
-                    ExecutorOuterClass.Page page = pages.next();
-                    log.info("retrieving next finished: " + page);
-
-                    SerializedPage spage = new SerializedPage(page.getSliceArray().toByteArray(), (byte) page.getPageCodecMarkers(), page.getPositionCount(), page.getUncompressedSizeInBytes());
-                    pageOutputBuffer.add(spage);
-                    log.info("Add to pageOutputBuffer " + task + " page: " + page);
-                }
-
-                log.info("Received all pages for " + taskid + "-" + bufferid);
-                //channel.shutdown();
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
-        });
+        }
+
+        @Override
+        public void onError(Throwable throwable)
+        {
+            throw new RuntimeException(throwable);
+        }
+
+        @Override
+        public void onCompleted()
+        {
+            notificationFuture.set(true);
+        }
     }
 }

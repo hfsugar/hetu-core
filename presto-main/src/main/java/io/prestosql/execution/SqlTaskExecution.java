@@ -113,7 +113,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
-    private final List<ShuffleService.Out> outputStreams;
+    private final List<ShuffleService.Stream> outputStreams;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -147,7 +147,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Out> outputStreams,
+            List<ShuffleService.Stream> outputStreams,
             List<TaskSource> sources,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
@@ -176,7 +176,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Out> outputStreams,
+            List<ShuffleService.Stream> outputStreams,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -650,11 +650,11 @@ public class SqlTaskExecution
 
         // no more output will be created
         outputBuffer.setNoMorePages();
-        for (ShuffleService.Out outputStream : outputStreams) {
+        for (ShuffleService.Stream outputStream : outputStreams) {
             outputStream.sendEof();
         }
 
-        for (ShuffleService.Out outputStream : outputStreams) {
+        for (ShuffleService.Stream outputStream : outputStreams) {
             while (!outputStream.isClosed()) {
                 // DO NOTHING
             }

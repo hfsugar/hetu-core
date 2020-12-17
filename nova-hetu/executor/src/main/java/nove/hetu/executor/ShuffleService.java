@@ -37,7 +37,7 @@ import static io.airlift.slice.Slices.EMPTY_SLICE;
 public class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
-    private static ConcurrentHashMap<String, Out> taskOutputMap = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<String, Stream> taskOutputMap = new ConcurrentHashMap<>();
 
     private static Logger log = Logger.getLogger(ShuffleService.class);
 
@@ -53,36 +53,39 @@ public class ShuffleService
     @Override
     public void getResult(ExecutorOuterClass.Task request, StreamObserver<ExecutorOuterClass.Page> responseObserver)
     {
-        log.info("Get result for " + request.getTaskId() + "-" + request.getBufferId());
-        Out out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
+        log.info("====================== Get result for " + request.getTaskId() + "-" + request.getBufferId());
+        Stream out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
         while (out == null) {
             out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
             if (out != null) {
+
                 log.info("Got output stream after retry " + request.getTaskId() + "-" + request.getBufferId());
             }
         }
+
 //        if (out == null) {
 //            throw new RuntimeException("invalid task: " + request.getTaskId());
 //        }
+        int count = 0;
         SerializedPage page;
         try {
             while (true) {
                 page = out.take();
-                if (page == Out.EOF) {
-                    out.eofSent = true;
+                if (page == Stream.EOF) {
                     break;
                 }
                 responseObserver.onNext(transform(page));
-                log.info("request " + request + "page: " + page);
+                count++;
+                log.info("pages sent: " + count);
             }
         }
         catch (InterruptedException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         finally {
             taskOutputMap.remove(out.id);
             responseObserver.onCompleted();
-            log.info("Finished sending pages for " + request.getTaskId() + "-" + request.getBufferId());
+            log.info("====================== Finished sending pages for " + request.getTaskId() + "-" + request.getBufferId() + " count:" + count);
         }
     }
 
@@ -102,18 +105,18 @@ public class ShuffleService
     }
 
     /**
-     * Returns a OutStream which will be use to sent the data to be returned to service caller
+     * Returns a OutStream which will be used bu PRODUCER to sent the data to be returned to service caller
      *
      * @return
      */
-    public static Out getOutStream(String taskid, String bufferid, PagesSerde serde)
+    public static Stream getStream(String taskid, String bufferid, PagesSerde serde)
     {
         log.info("Getting output stream for: " + taskid + "-" + bufferid);
         String key = toKey(taskid, bufferid);
-        Out out = taskOutputMap.get(key);
+        Stream out = taskOutputMap.get(key);
         if (out == null) {
-            out = new Out(key, serde);
-            Out temp = taskOutputMap.putIfAbsent(key, out);
+            out = new Stream(key, serde);
+            Stream temp = taskOutputMap.putIfAbsent(key, out);
             out = temp != null ? temp : out;
         }
         return out;
@@ -125,15 +128,16 @@ public class ShuffleService
      * out.write(page);
      * }
      */
-    public static class Out
+    public static class Stream
+            implements AutoCloseable
     {
         static final SerializedPage EOF = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
         private final PagesSerde serde;
         ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
         String id;
-        boolean eofSent;
+        boolean eof;
 
-        private Out(String id, PagesSerde serde)
+        private Stream(String id, PagesSerde serde)
         {
             this.id = id;
             this.serde = serde;
@@ -151,19 +155,20 @@ public class ShuffleService
          * @param page
          */
         public void write(Page page)
+                throws InterruptedException
         {
-            queue.add(serde.serialize(page));
+            if (eof) {
+                throw new IllegalStateException("Output stream is closed already");
+            }
+            queue.put(serde.serialize(page));
         }
 
-        public void sendEof()
+        @Override
+        public void close()
+                throws Exception
         {
-            log.info("Closing output stream for " + id);
-            queue.add(EOF);
-        }
-
-        public boolean isClosed()
-        {
-            return eofSent;
+            eof = true;
+            queue.put(EOF);
         }
     }
 }
