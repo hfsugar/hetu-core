@@ -39,13 +39,11 @@ import io.prestosql.operator.TaskContext;
 import io.prestosql.operator.TaskStats;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nove.hetu.executor.ShuffleService;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -398,9 +396,8 @@ public class SqlTask
                 taskExecution = taskHolder.getTaskExecution();
                 if (taskExecution == null) {
                     checkState(fragment.isPresent(), "fragment must be present");
-                    List<ShuffleService.Stream> outputStreams = createOutputStreams(taskStateMachine.getTaskId(), totalPartitions);
                     loadDCCatalogForUpdateTask(metadata, sources);
-                    taskExecution = sqlTaskExecutionFactory.create(session, queryContext, taskStateMachine, outputBuffer, outputStreams, fragment.get(), sources, totalPartitions);
+                    taskExecution = sqlTaskExecutionFactory.create(session, queryContext, taskStateMachine, outputBuffer, fragment.get(), sources, totalPartitions, serde);
                     taskHolderReference.compareAndSet(taskHolder, new TaskHolder(taskExecution));
                     needsPlan.set(false);
                 }
@@ -419,16 +416,6 @@ public class SqlTask
         }
 
         return getTaskInfo();
-    }
-
-    private List<ShuffleService.Stream> createOutputStreams(TaskId taskId, OptionalInt totalPartitions)
-    {
-        List<ShuffleService.Stream> outStreams = new ArrayList<>();
-        int numPartitions = totalPartitions.orElse(1); // default to 1 partition
-        for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
-            outStreams.add(ShuffleService.getStream(taskId.toString(), String.valueOf(partition), serde));
-        }
-        return outStreams;
     }
 
     public ListenableFuture<BufferResult> getTaskResults(String bufferId, long startingSequenceId, DataSize maxSize)

@@ -15,7 +15,7 @@
 package io.prestosql.operator;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
+import io.prestosql.spi.Page;
 
 import javax.annotation.Nullable;
 
@@ -35,16 +35,15 @@ public interface ExchangeClient
     void setNoMoreLocation();
 
     /**
-     *
      * FIXME: Should be consolidate with a better API so that the WorkProcessor logic for late materialization is isolated
      * this is currently used by MergeOperator only
      *
      * @return
      */
-    default WorkProcessor<SerializedPage> pages()
+    default WorkProcessor<Page> pages()
     {
         return WorkProcessor.create(() -> {
-            SerializedPage page = pollPage();
+            Page page = pollPage();
             if (page == null) {
                 if (isFinished()) {
                     return WorkProcessor.ProcessState.finished();
@@ -64,10 +63,11 @@ public interface ExchangeClient
 
     /**
      * Returns the currently returned pages
+     *
      * @return
      */
     @Nullable
-    SerializedPage pollPage();
+    Page pollPage();
 
     boolean isFinished();
 

@@ -29,14 +29,15 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
+import nove.hetu.executor.PageProducer;
 import nove.hetu.executor.ShuffleService;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -156,6 +157,7 @@ public class PartitionedOutputOperator
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PartitionedOutputOperator.class.getSimpleName());
+            List<PageProducer> pageProducers = outputStreams.stream().map(PageProducer::new).collect(Collectors.toList());
             return new PartitionedOutputOperator(
                     operatorContext,
                     sourceTypes,
@@ -166,7 +168,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    outputStreams,
+                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }
@@ -213,21 +215,12 @@ public class PartitionedOutputOperator
             boolean replicatesAnyRow,
             OptionalInt nullChannel,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Stream> outputStreams,
+            List<PageProducer> pageProducers,
             PagesSerdeFactory serdeFactory,
             DataSize maxMemory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-
-        HashMap<Integer, ShuffleService.Stream> gRpcOutMap = new HashMap<Integer, ShuffleService.Stream>();
-
-        for (int i = 0; i < partitionFunction.getPartitionCount(); i++) {
-            //initialize gRpc Out objects in a map;
-            String taskid = operatorContext.getDriverContext().getTaskId().toString();
-            ShuffleService.Stream out = ShuffleService.getStream(taskid, String.valueOf(i), serdeFactory.createPagesSerde()); //default bufferid is set to 0;
-            gRpcOutMap.put(i, out);
-        }
 
         this.partitionFunction = new PagePartitioner(
                 partitionFunction,
@@ -236,11 +229,10 @@ public class PartitionedOutputOperator
                 replicatesAnyRow,
                 nullChannel,
                 outputBuffer,
-                outputStreams,
+                pageProducers,
                 serdeFactory,
                 sourceTypes,
-                maxMemory,
-                gRpcOutMap);
+                maxMemory);
 
         operatorContext.setInfoSupplier(this::getInfo);
         this.systemMemoryContext = operatorContext.newLocalSystemMemoryContext(PartitionedOutputOperator.class.getSimpleName());
@@ -317,7 +309,7 @@ public class PartitionedOutputOperator
     private static class PagePartitioner
     {
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Stream> outputStreams;
+        private final List<PageProducer> pageProducers;
         private final List<Type> sourceTypes;
         private final PartitionFunction partitionFunction;
         private final List<Integer> partitionChannels;
@@ -337,10 +329,10 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Stream> outputStreams,
+                List<PageProducer> pageProducers,
                 PagesSerdeFactory serdeFactory,
                 List<Type> sourceTypes,
-                DataSize maxMemory, HashMap<Integer, ShuffleService.Stream> gRpcOutMap)
+                DataSize maxMemory)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
             this.partitionChannels = requireNonNull(partitionChannels, "partitionChannels is null");
@@ -350,7 +342,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
+            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.sourceTypes = requireNonNull(sourceTypes, "sourceTypes is null");
             this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
 
@@ -453,10 +445,15 @@ public class PartitionedOutputOperator
                     Page pagePartition = partitionPageBuilder.build();
                     partitionPageBuilder.reset();
 
-                    outputBuffer.enqueue(partition, pagePartition);
-                    outputStreams.get(partition).write(pagePartition);
-                    pagesAdded.incrementAndGet();
-                    rowsAdded.addAndGet(pagePartition.getPositionCount());
+                    try {
+                        outputBuffer.enqueue(partition, pagePartition);
+                        pageProducers.get(partition).send(pagePartition);
+                        pagesAdded.incrementAndGet();
+                        rowsAdded.addAndGet(pagePartition.getPositionCount());
+                    }
+                    catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }

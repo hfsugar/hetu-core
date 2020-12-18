@@ -14,6 +14,7 @@
 package io.prestosql.execution;
 
 import io.airlift.concurrent.SetThreadName;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.Session;
 import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.buffer.OutputBuffer;
@@ -26,6 +27,7 @@ import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
 import nove.hetu.executor.ShuffleService;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.concurrent.Executor;
@@ -61,7 +63,7 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, List<ShuffleService.Stream> outputStreams, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
+    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions, PagesSerde pagesSerde)
     {
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
@@ -69,6 +71,7 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
+        List<ShuffleService.Stream> outputStreams = createStreams(taskStateMachine.getTaskId(), totalPartitions, pagesSerde);
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -100,5 +103,15 @@ public class SqlTaskExecutionFactory
                 taskExecutor,
                 taskNotificationExecutor,
                 splitMonitor);
+    }
+
+    private List<ShuffleService.Stream> createStreams(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde)
+    {
+        List<ShuffleService.Stream> streams = new ArrayList<>();
+        int numPartitions = totalPartitions.orElse(1); // default to 1 partition
+        for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
+            streams.add(ShuffleService.getStream(taskId.toString(), String.valueOf(partition), pagesSerde));
+        }
+        return streams;
     }
 }

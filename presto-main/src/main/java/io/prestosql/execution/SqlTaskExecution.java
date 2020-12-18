@@ -113,7 +113,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
-    private final List<ShuffleService.Stream> outputStreams;
+    private final List<ShuffleService.Stream> streams;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -176,7 +176,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Stream> outputStreams,
+            List<ShuffleService.Stream> streams,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -186,7 +186,7 @@ public class SqlTaskExecution
         this.taskId = taskStateMachine.getTaskId();
         this.taskContext = requireNonNull(taskContext, "taskContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-        this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
+        this.streams = requireNonNull(streams, "outputStreams is null");
 
         this.taskExecutor = requireNonNull(taskExecutor, "driverExecutor is null");
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
@@ -650,15 +650,7 @@ public class SqlTaskExecution
 
         // no more output will be created
         outputBuffer.setNoMorePages();
-        for (ShuffleService.Stream outputStream : outputStreams) {
-            outputStream.sendEof();
-        }
-
-        for (ShuffleService.Stream outputStream : outputStreams) {
-            while (!outputStream.isClosed()) {
-                // DO NOTHING
-            }
-        }
+        closeAllStreams(streams);
 
         // are there still pages in the output buffer
 //        if (!outputBuffer.isFinished()) {
@@ -667,6 +659,25 @@ public class SqlTaskExecution
 
         // Cool! All done!
         taskStateMachine.finished();
+    }
+
+    private void closeAllStreams(List<ShuffleService.Stream> streams)
+    {
+        for (ShuffleService.Stream stream : streams) {
+            try {
+                stream.close();
+            }
+            catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        for (ShuffleService.Stream stream : streams) {
+            while (!stream.isClosed()) {
+                // Waiting for all pages to be sent, do nothing
+                // FIXME: find a better way to handle this
+            }
+        }
     }
 
     @Override

@@ -21,9 +21,11 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.hetu.core.transport.execution.buffer.PageCodecMarker;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.operator.HttpPageBufferClient.ClientCallback;
+import io.prestosql.spi.Page;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -91,6 +93,7 @@ public class HttpExchangeClient
 
     private final LocalMemoryContext systemMemoryContext;
     private final Executor pageBufferClientCallbackExecutor;
+    private final PagesSerde pagesSerde;
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -103,7 +106,8 @@ public class HttpExchangeClient
             HttpClient httpClient,
             ScheduledExecutorService scheduler,
             LocalMemoryContext systemMemoryContext,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            PagesSerde pagesSerde)
     {
         this.bufferCapacity = bufferCapacity.toBytes();
         this.maxResponseSize = maxResponseSize;
@@ -115,6 +119,7 @@ public class HttpExchangeClient
         this.systemMemoryContext = systemMemoryContext;
         this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
         this.pageBufferClientCallbackExecutor = requireNonNull(pageBufferClientCallbackExecutor, "pageBufferClientCallbackExecutor is null");
+        this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
     }
 
     @Override
@@ -189,7 +194,7 @@ public class HttpExchangeClient
 
     @Override
     @Nullable
-    public SerializedPage pollPage()
+    public Page pollPage()
     {
         checkState(!Thread.holdsLock(this), "Can not get next page while holding a lock on this");
 
@@ -203,7 +208,7 @@ public class HttpExchangeClient
         return postProcessPage(page);
     }
 
-    private SerializedPage postProcessPage(SerializedPage page)
+    private Page postProcessPage(SerializedPage page)
     {
         checkState(!Thread.holdsLock(this), "Can not get next page while holding a lock on this");
 
@@ -231,7 +236,7 @@ public class HttpExchangeClient
             }
         }
         scheduleRequestIfNecessary();
-        return page;
+        return pagesSerde.deserialize(page);
     }
 
     @Override
@@ -265,13 +270,6 @@ public class HttpExchangeClient
             checkState(pageBuffer.add(NO_MORE_PAGES), "Could not add no more pages marker");
         }
         notifyBlockedCallers();
-    }
-
-    public synchronized void scheduleGrpcRequest()
-    {
-        if (isFinished() || isFailed()) {
-            throw new IllegalStateException("Task has finished or failed");
-        }
     }
 
     public synchronized void scheduleRequestIfNecessary()

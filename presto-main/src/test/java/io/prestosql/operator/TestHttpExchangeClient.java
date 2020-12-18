@@ -21,8 +21,8 @@ import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.block.BlockAssertions;
+import io.prestosql.execution.buffer.TestingPagesSerdeFactory;
 import io.prestosql.memory.context.SimpleLocalMemoryContext;
 import io.prestosql.spi.Page;
 import org.testng.annotations.AfterClass;
@@ -102,7 +102,8 @@ public class TestHttpExchangeClient
                 new TestingHttpClient(processor, scheduler),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                new TestingPagesSerdeFactory().createPagesSerde());
 
         httpExchangeClient.addLocation(location);
         httpExchangeClient.setNoMoreLocation();
@@ -141,7 +142,8 @@ public class TestHttpExchangeClient
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                new TestingPagesSerdeFactory().createPagesSerde());
 
         URI location1 = URI.create("http://localhost:8081/foo");
         processor.addPage(location1, createPage(1));
@@ -213,7 +215,8 @@ public class TestHttpExchangeClient
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                new TestingPagesSerdeFactory().createPagesSerde());
 
         httpExchangeClient.addLocation(location);
         httpExchangeClient.setNoMoreLocation();
@@ -295,7 +298,8 @@ public class TestHttpExchangeClient
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                new TestingPagesSerdeFactory().createPagesSerde());
         httpExchangeClient.addLocation(location);
         httpExchangeClient.setNoMoreLocation();
 
@@ -325,17 +329,17 @@ public class TestHttpExchangeClient
         return new Page(BlockAssertions.createLongSequenceBlock(0, size));
     }
 
-    private static SerializedPage getNextPage(HttpExchangeClient httpExchangeClient)
+    private static Page getNextPage(HttpExchangeClient httpExchangeClient)
     {
-        ListenableFuture<SerializedPage> futurePage = Futures.transform(httpExchangeClient.isBlocked(), ignored -> httpExchangeClient.pollPage(), directExecutor());
+        ListenableFuture<Page> futurePage = Futures.transform(httpExchangeClient.isBlocked(), ignored -> httpExchangeClient.pollPage(), directExecutor());
         return tryGetFutureValue(futurePage, 100, TimeUnit.SECONDS).orElse(null);
     }
 
-    private static void assertPageEquals(SerializedPage actualPage, Page expectedPage)
+    private static void assertPageEquals(Page actualPage, Page expectedPage)
     {
         assertNotNull(actualPage);
         assertEquals(actualPage.getPositionCount(), expectedPage.getPositionCount());
-        assertEquals(PAGES_SERDE.deserialize(actualPage).getChannelCount(), expectedPage.getChannelCount());
+        assertEquals(actualPage.getChannelCount(), expectedPage.getChannelCount());
     }
 
     private static void assertStatus(PageBufferClientStatus clientStatus,

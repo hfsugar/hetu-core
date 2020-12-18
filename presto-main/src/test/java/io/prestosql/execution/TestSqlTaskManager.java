@@ -21,6 +21,7 @@ import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffers;
@@ -274,7 +275,7 @@ public class TestSqlTaskManager
             implements ExchangeClientSupplier
     {
         @Override
-        public HttpExchangeClient get(LocalMemoryContext systemMemoryContext)
+        public HttpExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
         {
             throw new UnsupportedOperationException();
         }

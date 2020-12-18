@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2018-2020. Huawei Technologies Co., Ltd. All rights reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package nova.hetu.executor.shuffle;
 
 import io.airlift.slice.SliceInput;
@@ -12,26 +26,38 @@ import nova.hetu.GrpcServer;
 import nove.hetu.executor.PageConsumer;
 import nove.hetu.executor.PageProducer;
 import nove.hetu.executor.ShuffleService;
-import org.junit.jupiter.api.Test;
+import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 public class TestShuffleService
 {
     private static Random random = new Random();
 
+    @BeforeSuite
+    public void setup()
+    {
+        GrpcServer.start();
+    }
+
     @Test
     public void TestSingleProducerSingleConsumerQueue()
             throws InterruptedException
     {
-        GrpcServer.start();
-        String taskid = "taskid";
+        String taskid = getTaskId();
         String bufferid = "0";
 
         PagesSerde serde = new MockConstantPagesSerde();
@@ -55,15 +81,14 @@ public class TestShuffleService
         for (int i = 0; i < 10; i++) {
             assertEquals(i, result[i]);
         }
-        assertEquals(true, consumer.ended());
+        assertEquals(true, consumer.isEnded());
     }
 
     @Test
     public void TestMultiProducerSingleConsumerWithDelayQueue()
             throws InterruptedException
     {
-        GrpcServer.start();
-        String taskid = "taskid";
+        String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
 
@@ -72,7 +97,6 @@ public class TestShuffleService
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
         try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-
             PageProducer producer1 = new PageProducer(out);
             PageProducer producer2 = new PageProducer(out);
 
@@ -92,36 +116,34 @@ public class TestShuffleService
 
         consumerThread.join();
 
-        while (!consumer.ended()) {
+        while (!consumer.isEnded()) {
             Thread.sleep(50);
         }
-        if (consumer.ended()) {
+        if (consumer.isEnded()) {
             //ensure all results received
             for (int i = 0; i < 40; i++) {
                 assertEquals(i, result[i]);
             }
         }
-        assertEquals(true, consumer.ended());
+        assertEquals(true, consumer.isEnded());
     }
 
     @Test
     public void TestMultiProducerSingleConsumerNoDelay()
             throws InterruptedException
     {
-        GrpcServer.start();
-        String taskid = "taskid";
+        String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
         PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
 
-        assertFalse("page consumer started with ended status", consumer.ended());
+        assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
         try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-
             PageProducer producer1 = new PageProducer(out);
             PageProducer producer2 = new PageProducer(out);
 
@@ -141,24 +163,22 @@ public class TestShuffleService
 
         consumerThread.join();
 
-        while (!consumer.ended()) {
+        while (!consumer.isEnded()) {
             Thread.sleep(50);
         }
-        if (consumer.ended()) {
+        if (consumer.isEnded()) {
             //ensure all results received
             for (int i = 0; i < 40; i++) {
                 assertEquals(i, result[i]);
             }
         }
-        assertEquals(true, consumer.ended());
+        assertEquals(true, consumer.isEnded());
     }
 
-    @Test
     public void TestMultiProducerSingleConsumerQueue()
             throws InterruptedException
     {
-        GrpcServer.start();
-        String taskid = "taskid";
+        String taskid = getTaskId();
         String bufferid = "0";
 
         PagesSerde serde = new MockConstantPagesSerde();
@@ -167,7 +187,6 @@ public class TestShuffleService
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
         try (ShuffleService.Stream stream = ShuffleService.getStream(taskid, bufferid, serde)) {
-
             PageProducer producer1 = new PageProducer(stream);
             PageProducer producer2 = new PageProducer(stream);
             PageProducer producer3 = new PageProducer(stream);
@@ -196,7 +215,7 @@ public class TestShuffleService
 
         consumerThread.join();
 
-        while (!consumer.ended()) {
+        while (!consumer.isEnded()) {
             TimeUnit.MILLISECONDS.sleep(50);
         }
 
@@ -204,15 +223,14 @@ public class TestShuffleService
         for (int i = 0; i < 4000; i++) {
             assertEquals(i, result[i]);
         }
-        assertTrue(consumer.ended());
+        assertTrue(consumer.isEnded());
     }
 
     @Test
     void TestPageConsumerStatus()
             throws InterruptedException
     {
-        GrpcServer.start();
-        String taskid = "taskid";
+        String taskid = getTaskId();
         String bufferid = "0";
 
         PagesSerde serde = new MockConstantPagesSerde();
@@ -220,37 +238,87 @@ public class TestShuffleService
         PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
-        assertFalse("Consumer should not start with ended status", consumer.ended());
+        assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
         TimeUnit.MILLISECONDS.sleep(500);
-        assertFalse("Consumer should not be ended without getting any input", consumer.ended());
+        assertFalse(consumer.isEnded(), "Consumer should not be ended without getting any input");
+    }
+
+    @Test
+    void TestConcurrentPageExchanges()
+            throws ExecutionException, InterruptedException
+    {
+        ExecutorService executorService = Executors.newFixedThreadPool(10);
+        List<Future> results = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            Future future = executorService.submit(() -> {
+                try {
+                    TestMultiProducerSingleConsumerQueue();
+                }
+                catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
+            results.add(future);
+        }
+        for (Future result : results) {
+            result.get();
+        }
+        executorService.shutdown();
+    }
+
+    @Test
+    public void TestConsumerStatus()
+            throws InterruptedException
+    {
+        GrpcServer.start();
+        String taskid = getTaskId();
+        String bufferid = "0";
+        PagesSerde serde = new MockConstantPagesSerde();
+        try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
+            PageProducer producer = new PageProducer(out);
+            Thread producerThread = createProducerThread(producer, 0, 10, 100);
+            producerThread.start();
+            producerThread.join();
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        long[] result = new long[10];
+        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        Thread consumerThread = createConsumerThread(consumer, result, 0);
+        consumerThread.start();
+        consumerThread.join();
+        //ensure all results received
+        for (int i = 0; i < 10; i++) {
+            assertEquals(i, result[i]);
+        }
+        assertEquals(true, consumer.isEnded());
     }
 
     static Thread createConsumerThread(PageConsumer consumer, long[] result, int delay)
     {
-        return new Thread(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                try {
-                    int count=0;
-                    while (!consumer.ended()) {
-                        count++;
-                        Page page = consumer.take();
-                        int value = (int) page.getBlock(0).getLong(0, 0);
-                        assertEquals("received duplicate page", 0, result[value]);
-                        result[value] = value;
-                        System.out.println("taking the output: " + page + " content:" + page.getBlock(0).getLong(0, 0));
-                        if (delay > 0) {
-                            Thread.sleep(random.nextInt(delay));
-                        }
+        return new Thread(() -> {
+            try {
+                int count = 0;
+                while (!consumer.isEnded()) {
+                    count++;
+                    Page page = consumer.poll();
+                    if (page == null) {
+                        continue;
                     }
-                    System.out.println("taking the output ended, :" + count);
 
+                    int value = (int) page.getBlock(0).getLong(0, 0);
+                    assertEquals(0, result[value], "received duplicate page");
+                    result[value] = value;
+//                    System.out.println("taking the output: " + page + " content:" + page.getBlock(0).getLong(0, 0));
+                    if (delay > 0) {
+                        Thread.sleep(random.nextInt(delay));
+                    }
                 }
-                catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                System.out.println("taking the output ended, :" + count);
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
         });
     }
@@ -273,6 +341,7 @@ public class TestShuffleService
             public void run()
             {
                 try {
+                    System.out.println("Producing pages from " + start + " to " + end + " with delay " + delay);
                     for (int i = start; i < end; i++) {
                         producer.send(getPage(i));
                         if (delay > 0) {
@@ -283,8 +352,16 @@ public class TestShuffleService
                 catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
+                catch (Exception e) {
+                    System.out.println(e.getMessage());
+                }
             }
         });
+    }
+
+    static String getTaskId()
+    {
+        return "task-" + random.nextInt(10000);
     }
 
     static Page getPage(int count)
@@ -297,7 +374,6 @@ public class TestShuffleService
     static class MockConstantPagesSerde
             extends PagesSerde
     {
-
         MockConstantPagesSerde()
         {
             super(new MockBlockEncodingSerde(), Optional.empty(), Optional.empty(), Optional.empty());
@@ -323,7 +399,6 @@ public class TestShuffleService
     static class MockBlockEncodingSerde
             implements BlockEncodingSerde
     {
-
         @Override
         public Block readBlock(SliceInput input)
         {

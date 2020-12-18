@@ -16,16 +16,15 @@ package io.prestosql.operator;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
-import nove.hetu.executor.ShuffleClient;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.prestosql.spi.Page;
+import nove.hetu.executor.PageConsumer;
 
 import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 
 import java.net.URI;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingDeque;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * One client per location/split.
@@ -34,11 +33,15 @@ import java.util.concurrent.LinkedBlockingDeque;
 public class GrpcExchangeClient
         implements ExchangeClient
 {
-    private final LinkedBlockingDeque<SerializedPage> pageOutputBuffer = new LinkedBlockingDeque<>();
-    @GuardedBy("this")
+    private final PagesSerde pagesSerde;
 
-    Future getResult;
+    private PageConsumer pageConsumer;
     private boolean noMoreLocation;
+
+    public GrpcExchangeClient(PagesSerde pagesSerde)
+    {
+        this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
+    }
 
     @Override
     public ExchangeClientStatus getStatistics()
@@ -52,12 +55,13 @@ public class GrpcExchangeClient
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
         String[] paths = location.getPath().split("/");
 
-        getResult = ShuffleClient.getResults(
-                location.getHost(),
-                16544 /** BIG BIG HACK, ASSUME GRPC LISTEN ON THIS PORT, SHOULD CHANGE TO USE CONFIGURATION*/,
-                paths[3],
-                paths[5],
-                pageOutputBuffer);
+//        getResult = ShuffleClient.getResults(
+//                location.getHost(),
+//                16544 /** BIG BIG HACK, ASSUME GRPC LISTEN ON THIS PORT, SHOULD CHANGE TO USE CONFIGURATION*/,
+//                paths[3],
+//                paths[5],
+//                pageOutputBuffer);
+        pageConsumer = new PageConsumer(paths[3], paths[5], pagesSerde);
     }
 
     @Override
@@ -68,22 +72,25 @@ public class GrpcExchangeClient
 
     @Nullable
     @Override
-    public SerializedPage pollPage()
+    public Page pollPage()
     {
-        return pageOutputBuffer.poll();
+        if (pageConsumer == null) {
+            return null;
+        }
+        return pageConsumer.poll();
     }
 
     @Override
     public boolean isFinished()
     {
-        return getResult != null && getResult.isDone();
+        return pageConsumer != null && pageConsumer.isEnded();
     }
 
     @Override
     public boolean isClosed()
     {
-        /** shouldn't need to check if getResult is null if this is only called after {@link #addLocation(URI)} is invoked */
-        return getResult != null && getResult.isDone();
+        /** shouldn't need to check if pageConsumer is null if this is only called after {@link #addLocation(URI)} is invoked */
+        return pageConsumer != null && pageConsumer.isEnded();
     }
 
     @Override

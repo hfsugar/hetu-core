@@ -19,6 +19,7 @@ import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nove.hetu.executor.PageProducer;
 import nove.hetu.executor.ShuffleService;
 
 import java.util.List;
@@ -65,13 +66,15 @@ public class TaskOutputOperator
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
             this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
+            checkArgument(outputStreams.size() == 1, "there should be only 1 output stream");
         }
 
         @Override
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
-            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, outputStreams);
+            PageProducer pageProducer = new PageProducer(outputStreams.get(0));
+            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, pageProducer);
         }
 
         @Override
@@ -88,18 +91,16 @@ public class TaskOutputOperator
 
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
-    private final ShuffleService.Stream outputStream;
+    private final PageProducer pageProducer;
     private final Function<Page, Page> pagePreprocessor;
     private boolean finished;
 
-    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<ShuffleService.Stream> outputStreams)
+    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PageProducer pageProducer)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        requireNonNull(outputStreams, "outputStreams is null");
-        checkArgument(outputStreams.size() == 1, "there should be only 1 output stream");
-        this.outputStream = outputStreams.get(0);
+        this.pageProducer = requireNonNull(pageProducer, "pageProducer is null");
     }
 
     @Override
@@ -117,6 +118,9 @@ public class TaskOutputOperator
     @Override
     public boolean isFinished()
     {
+        if (finished && isBlocked().isDone()) {
+            System.out.println("Operator " + operatorContext.getOperatorId() + " processed " + operatorContext.getInputPositions().getTotalCount() + " rows");
+        }
         return finished && isBlocked().isDone();
     }
 
@@ -145,7 +149,12 @@ public class TaskOutputOperator
 
         if (true /** grpc.enabled = true */) {
             //redirect to grpc shuffle service
-            outputStream.write(page);
+            try {
+                pageProducer.send(page);
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
         else {
             outputBuffer.enqueue(page);

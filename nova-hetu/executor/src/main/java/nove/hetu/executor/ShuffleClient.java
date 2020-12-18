@@ -37,7 +37,8 @@ public class ShuffleClient
 
     private ShuffleClient() {}
 
-    private static synchronized ManagedChannel getOrCreateChannel(String host, int port) {
+    private static synchronized ManagedChannel getOrCreateChannel(String host, int port)
+    {
         if (channel == null) {
             channel = ManagedChannelBuilder
                     .forAddress(host, port)
@@ -46,6 +47,7 @@ public class ShuffleClient
         }
         return channel;
     }
+
     /**
      * Get the execution results identified by a taskid and bufferid
      * The method runs in a separate thread. The SerializedPage is streamed back, streaming of pages terminates when there is not futher pages.
@@ -77,28 +79,32 @@ public class ShuffleClient
         return future;
     }
 
-    private static class ShuffleStreamObserver implements StreamObserver<ExecutorOuterClass.Page>
+    private static class ShuffleStreamObserver
+            implements StreamObserver<ExecutorOuterClass.Page>
     {
         LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
         SettableFuture<Boolean> notificationFuture;
+        int count;
 
-        ShuffleStreamObserver(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, SettableFuture notificationFuture) {
+        ShuffleStreamObserver(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, SettableFuture notificationFuture)
+        {
             this.pageOutputBuffer = pageOutputBuffer;
             this.notificationFuture = notificationFuture;
         }
-        int count = 0;
 
         @Override
         public void onNext(ExecutorOuterClass.Page page)
         {
             count++;
             SerializedPage spage = new SerializedPage(page.getSliceArray().toByteArray(), (byte) page.getPageCodecMarkers(), page.getPositionCount(), page.getUncompressedSizeInBytes());
-            log.info("got page: " + Long.valueOf(new String(spage.getSliceArray())));
             try {
                 pageOutputBuffer.put(spage);
             }
             catch (InterruptedException e) {
                 throw new RuntimeException(e);
+            }
+            catch (Exception e) {
+                log.error(e.getMessage());
             }
         }
 

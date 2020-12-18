@@ -16,6 +16,7 @@ package nove.hetu.executor;
 
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.PageCodecMarker;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
@@ -37,7 +38,7 @@ import static io.airlift.slice.Slices.EMPTY_SLICE;
 public class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
-    private static ConcurrentHashMap<String, Stream> taskOutputMap = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
 
     private static Logger log = Logger.getLogger(ShuffleService.class);
 
@@ -54,36 +55,36 @@ public class ShuffleService
     public void getResult(ExecutorOuterClass.Task request, StreamObserver<ExecutorOuterClass.Page> responseObserver)
     {
         log.info("====================== Get result for " + request.getTaskId() + "-" + request.getBufferId());
-        Stream out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
-        while (out == null) {
-            out = taskOutputMap.get(toKey(request.getTaskId(), request.getBufferId()));
-            if (out != null) {
-
+        ServerCallStreamObserver<ExecutorOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ExecutorOuterClass.Page>) responseObserver;
+        Stream stream = streamMap.get(toKey(request.getTaskId(), request.getBufferId()));
+        while (stream == null && !serverCallStreamObserver.isCancelled()) {
+            stream = streamMap.get(toKey(request.getTaskId(), request.getBufferId()));
+            if (stream != null) {
                 log.info("Got output stream after retry " + request.getTaskId() + "-" + request.getBufferId());
             }
         }
 
-//        if (out == null) {
+//        if (stream == null) {
 //            throw new RuntimeException("invalid task: " + request.getTaskId());
 //        }
         int count = 0;
         SerializedPage page;
         try {
-            while (true) {
-                page = out.take();
-                if (page == Stream.EOF) {
+            while (true && !serverCallStreamObserver.isCancelled()) {
+                page = stream.take();
+                if (page == Stream.EOS) {
                     break;
                 }
                 responseObserver.onNext(transform(page));
                 count++;
-                log.info("pages sent: " + count);
+//                log.info("pages sent: " + count);
             }
         }
         catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
         finally {
-            taskOutputMap.remove(out.id);
+            streamMap.remove(stream.id);
             responseObserver.onCompleted();
             log.info("====================== Finished sending pages for " + request.getTaskId() + "-" + request.getBufferId() + " count:" + count);
         }
@@ -113,10 +114,10 @@ public class ShuffleService
     {
         log.info("Getting output stream for: " + taskid + "-" + bufferid);
         String key = toKey(taskid, bufferid);
-        Stream out = taskOutputMap.get(key);
+        Stream out = streamMap.get(key);
         if (out == null) {
             out = new Stream(key, serde);
-            Stream temp = taskOutputMap.putIfAbsent(key, out);
+            Stream temp = streamMap.putIfAbsent(key, out);
             out = temp != null ? temp : out;
         }
         return out;
@@ -131,11 +132,11 @@ public class ShuffleService
     public static class Stream
             implements AutoCloseable
     {
-        static final SerializedPage EOF = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
+        static final SerializedPage EOS = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
         private final PagesSerde serde;
         ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
         String id;
-        boolean eof;
+        boolean eos; // endOfStream
 
         private Stream(String id, PagesSerde serde)
         {
@@ -143,7 +144,7 @@ public class ShuffleService
             this.serde = serde;
         }
 
-        public SerializedPage take()
+        SerializedPage take()
                 throws InterruptedException
         {
             return queue.take();
@@ -157,18 +158,23 @@ public class ShuffleService
         public void write(Page page)
                 throws InterruptedException
         {
-            if (eof) {
+            if (eos) {
                 throw new IllegalStateException("Output stream is closed already");
             }
             queue.put(serde.serialize(page));
+        }
+
+        public boolean isClosed()
+        {
+            return eos && queue.isEmpty();
         }
 
         @Override
         public void close()
                 throws Exception
         {
-            eof = true;
-            queue.put(EOF);
+            eos = true;
+            queue.put(EOS);
         }
     }
 }

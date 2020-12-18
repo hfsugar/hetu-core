@@ -160,13 +160,14 @@ public class MergeOperator
         checkState(!blockedOnSplits.isDone(), "noMoreSplits has been called already");
 
         URI location = ((RemoteSplit) split.getConnectorSplit()).getLocation();
-        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
+        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext(), pagesSerde));
         exchangeClient.addLocation(location);
         exchangeClient.setNoMoreLocation();
         pageProducers.add(exchangeClient.pages()
-                .map(serializedPage -> {
-                    operatorContext.recordNetworkInput(serializedPage.getSizeInBytes(), serializedPage.getPositionCount());
-                    return pagesSerde.deserialize(serializedPage);
+                .map(page -> {
+                    // FIXME ARVEN: move this to where page get deserialized
+                    operatorContext.recordNetworkInput(page.getSizeInBytes(), page.getPositionCount());
+                    return page;
                 }));
 
         return Optional::empty;
