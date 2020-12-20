@@ -12,15 +12,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nove.hetu.executor;
+package nova.hetu.executor;
 
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
 
 public class PageProducer
 {
+    /**
+     * Creates a Page Producer for sending pages to a taskid of a specific partition, when the output is not parititoned
+     * the default partitionid is 0
+     * @param taskid
+     * @param partitionId
+     * @param serde
+     * @return
+     */
+    public static PageProducer create(String taskid, String partitionId, PagesSerde serde /** can we hide this? */)
+    {
+        return new PageProducer(ShuffleService.getStream(taskid, partitionId, serde));
+    }
+
     private ShuffleService.Stream out;
 
-    public PageProducer(ShuffleService.Stream out)
+    PageProducer(ShuffleService.Stream out)
     {
         this.out = out;
     }
@@ -29,5 +43,16 @@ public class PageProducer
             throws InterruptedException
     {
         out.write(page);
+    }
+
+    public void close()
+            throws Exception
+    {
+        out.close();
+    }
+
+    public boolean isClosed()
+    {
+        return out.isClosed();
     }
 }

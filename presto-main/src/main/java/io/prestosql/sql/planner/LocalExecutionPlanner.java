@@ -206,7 +206,8 @@ import io.prestosql.sql.tree.SymbolReference;
 import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
+import nova.hetu.executor.ShuffleService;
 
 import javax.inject.Inject;
 
@@ -407,7 +408,7 @@ public class LocalExecutionPlanner
             StageExecutionDescriptor stageExecutionDescriptor,
             List<PlanNodeId> partitionedSourceOrder,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Stream> outputStreams)
+            List<PageProducer> pageProducers)
     {
         List<Symbol> outputLayout = partitioningScheme.getOutputLayout();
 
@@ -416,7 +417,7 @@ public class LocalExecutionPlanner
                 partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
-            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, outputStreams, new TaskOutputFactory(outputBuffer, outputStreams));
+            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, pageProducers, new TaskOutputFactory(outputBuffer, pageProducers));
         }
 
         // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -472,7 +473,7 @@ public class LocalExecutionPlanner
                 outputLayout,
                 types,
                 partitionedSourceOrder,
-                outputStreams,
+                pageProducers,
                 new PartitionedOutputFactory(
                         partitionFunction,
                         partitionChannels,
@@ -480,7 +481,7 @@ public class LocalExecutionPlanner
                         partitioningScheme.isReplicateNullsAndAny(),
                         nullChannel,
                         outputBuffer,
-                        outputStreams,
+                        pageProducers,
                         maxPagePartitioningBufferSize));
     }
 
@@ -491,7 +492,7 @@ public class LocalExecutionPlanner
             List<Symbol> outputLayout,
             TypeProvider types,
             List<PlanNodeId> partitionedSourceOrder,
-            List<ShuffleService.Stream> outputStreams,
+            List<PageProducer> outputStreams,
             OutputFactory outputOperatorFactory)
     {
         Session session = taskContext.getSession();

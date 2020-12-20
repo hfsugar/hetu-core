@@ -23,9 +23,9 @@ import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockEncodingSerde;
 import io.prestosql.spi.block.LongArrayBlock;
 import nova.hetu.GrpcServer;
-import nove.hetu.executor.PageConsumer;
-import nove.hetu.executor.PageProducer;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageConsumer;
+import nova.hetu.executor.PageProducer;
+import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
@@ -53,26 +53,29 @@ public class TestShuffleService
         GrpcServer.start();
     }
 
+    @AfterSuite
+    public void tearDown() {
+        GrpcServer.shutdown();
+    }
+
     @Test
     public void TestSingleProducerSingleConsumerQueue()
-            throws InterruptedException
+            throws Exception
     {
         String taskid = getTaskId();
         String bufferid = "0";
 
         PagesSerde serde = new MockConstantPagesSerde();
-        try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-            PageProducer producer = new PageProducer(out);
-            Thread producerThread = createProducerThread(producer, 0, 10, 100);
-            producerThread.start();
-            producerThread.join();
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+
+        PageProducer producer = PageProducer.create(taskid, bufferid, serde);
+        Thread producerThread = createProducerThread(producer, 0, 10, 100);
+        producerThread.start();
+        producerThread.join();
+
+        producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
         consumerThread.start();
         consumerThread.join();
@@ -86,33 +89,31 @@ public class TestShuffleService
 
     @Test
     public void TestMultiProducerSingleConsumerWithDelayQueue()
-            throws InterruptedException
+            throws Exception
     {
         String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-            PageProducer producer1 = new PageProducer(out);
-            PageProducer producer2 = new PageProducer(out);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
 
-            Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
-            Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
+        Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
+        Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
 
-            producer1Thread.start();
-            producer2Thread.start();
-            consumerThread.start();
+        producer1Thread.start();
+        producer2Thread.start();
+        consumerThread.start();
 
-            producer1Thread.join();
-            producer2Thread.join(); //wait for all producers to finish before exiting the try which closes the Out;
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        producer1Thread.join();
+        producer2Thread.join(); //wait for all producers to finish before exiting the try which closes the Out;
+
+        producer1.close();
+        producer2.close();
 
         consumerThread.join();
 
@@ -130,36 +131,34 @@ public class TestShuffleService
 
     @Test
     public void TestMultiProducerSingleConsumerNoDelay()
-            throws InterruptedException
+            throws Exception
     {
         String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
 
         assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-            PageProducer producer1 = new PageProducer(out);
-            PageProducer producer2 = new PageProducer(out);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
 
-            Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
-            Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
+        Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
+        Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
 
-            producer1Thread.start();
-            producer2Thread.start();
-            consumerThread.start();
+        producer1Thread.start();
+        producer2Thread.start();
+        consumerThread.start();
 
-            producer1Thread.join();
-            producer2Thread.join(); //wait for all producers to finish before exiting the try which closes the Out;
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        producer1Thread.join();
+        producer2Thread.join(); //wait for all producers to finish before exiting the try which closes the Out;
+
+        producer1.close();
+        producer2.close();
 
         consumerThread.join();
 
@@ -176,42 +175,42 @@ public class TestShuffleService
     }
 
     public void TestMultiProducerSingleConsumerQueue()
-            throws InterruptedException
+            throws Exception
     {
         String taskid = getTaskId();
         String bufferid = "0";
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
-        try (ShuffleService.Stream stream = ShuffleService.getStream(taskid, bufferid, serde)) {
-            PageProducer producer1 = new PageProducer(stream);
-            PageProducer producer2 = new PageProducer(stream);
-            PageProducer producer3 = new PageProducer(stream);
-            PageProducer producer4 = new PageProducer(stream);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer3 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer4 = PageProducer.create(taskid, bufferid, serde);
 
-            Thread producer1Thread = createProducerThread(producer1, 0, 1000, 0);
-            Thread producer2Thread = createProducerThread(producer2, 1000, 2000, 0);
-            Thread producer3Thread = createProducerThread(producer3, 2000, 3000, 0);
-            Thread producer4Thread = createProducerThread(producer4, 3000, 4000, 0);
+        Thread producer1Thread = createProducerThread(producer1, 0, 1000, 0);
+        Thread producer2Thread = createProducerThread(producer2, 1000, 2000, 0);
+        Thread producer3Thread = createProducerThread(producer3, 2000, 3000, 0);
+        Thread producer4Thread = createProducerThread(producer4, 3000, 4000, 0);
 
-            producer1Thread.start();
-            producer2Thread.start();
-            producer3Thread.start();
-            producer4Thread.start();
+        producer1Thread.start();
+        producer2Thread.start();
+        producer3Thread.start();
+        producer4Thread.start();
 
-            consumerThread.start();
+        consumerThread.start();
 
-            producer1Thread.join();
-            producer2Thread.join();
-            producer3Thread.join();
-            producer4Thread.join();
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        producer1Thread.join();
+        producer2Thread.join();
+        producer3Thread.join();
+        producer4Thread.join();
+
+        producer1.close();
+        producer2.close();
+        producer3.close();
+        producer4.close();
 
         consumerThread.join();
 
@@ -235,7 +234,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
@@ -257,6 +256,9 @@ public class TestShuffleService
                 catch (InterruptedException e) {
                     e.printStackTrace();
                 }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
             });
             results.add(future);
         }
@@ -268,23 +270,21 @@ public class TestShuffleService
 
     @Test
     public void TestConsumerStatus()
-            throws InterruptedException
+            throws Exception
     {
         GrpcServer.start();
         String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
-        try (ShuffleService.Stream out = ShuffleService.getStream(taskid, bufferid, serde)) {
-            PageProducer producer = new PageProducer(out);
-            Thread producerThread = createProducerThread(producer, 0, 10, 100);
-            producerThread.start();
-            producerThread.join();
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        PageProducer producer = PageProducer.create(taskid, bufferid, serde);
+        Thread producerThread = createProducerThread(producer, 0, 10, 100);
+        producerThread.start();
+        producerThread.join();
+
+        producer.close();
+
         long[] result = new long[10];
-        PageConsumer consumer = new PageConsumer(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
         consumerThread.start();
         consumerThread.join();
@@ -301,11 +301,11 @@ public class TestShuffleService
             try {
                 int count = 0;
                 while (!consumer.isEnded()) {
-                    count++;
                     Page page = consumer.poll();
                     if (page == null) {
                         continue;
                     }
+                    count++;
 
                     int value = (int) page.getBlock(0).getLong(0, 0);
                     assertEquals(0, result[value], "received duplicate page");

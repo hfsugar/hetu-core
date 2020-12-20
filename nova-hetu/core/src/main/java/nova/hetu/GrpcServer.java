@@ -16,7 +16,7 @@ package nova.hetu;
 
 import nova.hetu.cluster.Cluster;
 import nova.hetu.cluster.ClusterConfig;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.ShuffleService;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -24,7 +24,7 @@ import java.io.IOException;
 public class GrpcServer
 {
     private static Logger log = Logger.getLogger(GrpcServer.class);
-
+    private static Cluster cluster;
     private GrpcServer() {}
 
     public static void main(String[] args)
@@ -38,9 +38,9 @@ public class GrpcServer
         int i = 0;
         while (i < 10) {
             try {
-                Cluster.Builder()
-                        .addService(new ShuffleService())
-                        .build().start();
+                cluster = Cluster.Builder()
+                        .addService(new ShuffleService()).build();
+                cluster.start();
                 break;
             }
             catch (IOException e) { //port is occupied
@@ -58,5 +58,10 @@ public class GrpcServer
     {
         ClusterConfig.config.addMaster(new ClusterConfig.EndPoint(ClusterConfig.config.local.ip, ClusterConfig.config.local.port + 1));
         ClusterConfig.config.addMaster(new ClusterConfig.EndPoint(ClusterConfig.config.local.ip, ClusterConfig.config.local.port + 2));
+    }
+
+    public static void shutdown()
+    {
+        cluster.shutdown();
     }
 }

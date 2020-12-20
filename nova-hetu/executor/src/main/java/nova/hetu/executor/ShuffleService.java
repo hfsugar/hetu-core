@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nove.hetu.executor;
+package nova.hetu.executor;
 
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
@@ -22,8 +22,6 @@ import io.hetu.core.transport.execution.buffer.PageCodecMarker;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
-import nova.hetu.executor.ExecutorOuterClass;
-import nova.hetu.executor.ShuffleGrpc;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ArrayBlockingQueue;
@@ -32,17 +30,25 @@ import java.util.concurrent.ConcurrentHashMap;
 import static io.airlift.slice.Slices.EMPTY_SLICE;
 
 /**
- * A gRpc service to transfer serialized pages in a streaming manner
- * All retry, backoff capabilities will be provided by gRpc
+ ####Shuffle Service
+ Shuffle service is responsible shuffling data between tasks. It should be easy for the user of Shuffle service to set up
+ communication between tasks based on the DAG of stages.
+
+ ######Requirements
+ 1. A single point responsible for communication between tasks
+ 2. Capable of `1 to 1`, `1 to M`, `M to 1` and `M to M` communication paradigms
+ 3. Transparent back pressure
+ 4. Non-blocking
+
+ This is designed to allow easy reimplementation over other prototcal such as RSocket: https://github.com/rsocket/rsocket-java
  */
-public class ShuffleService
+class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
     private static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
 
     private static Logger log = Logger.getLogger(ShuffleService.class);
 
-    @Inject
     public ShuffleService() {}
 
     /**
@@ -106,14 +112,14 @@ public class ShuffleService
     }
 
     /**
-     * Returns a OutStream which will be used bu PRODUCER to sent the data to be returned to service caller
+     * Returns a OutStream which will be used PRODUCER to sent the data to be returned to service caller
      *
      * @return
      */
-    public static Stream getStream(String taskid, String bufferid, PagesSerde serde)
+    static Stream getStream(String taskid, String partitionId /** bufferid == partitionid */, PagesSerde serde)
     {
-        log.info("Getting output stream for: " + taskid + "-" + bufferid);
-        String key = toKey(taskid, bufferid);
+        log.info("Getting output stream for: " + taskid + "-" + partitionId);
+        String key = toKey(taskid, partitionId);
         Stream out = streamMap.get(key);
         if (out == null) {
             out = new Stream(key, serde);
@@ -129,7 +135,7 @@ public class ShuffleService
      * out.write(page);
      * }
      */
-    public static class Stream
+    static class Stream
             implements AutoCloseable
     {
         static final SerializedPage EOS = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);

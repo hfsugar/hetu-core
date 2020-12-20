@@ -29,8 +29,8 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
-import nove.hetu.executor.PageProducer;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
+import nova.hetu.executor.ShuffleService;
 
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +56,7 @@ public class PartitionedOutputOperator
         private final List<Integer> partitionChannels;
         private final List<Optional<NullableValue>> partitionConstants;
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Stream> outputStreams;
+        private final List<PageProducer> pageProducers;
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final DataSize maxMemory;
@@ -68,7 +68,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Stream> outputStreams,
+                List<PageProducer> pageProducers,
                 DataSize maxMemory)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
@@ -77,7 +77,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
+            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
 
@@ -100,7 +100,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    outputStreams,
+                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }
@@ -119,7 +119,7 @@ public class PartitionedOutputOperator
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final OutputBuffer outputBuffer;
-        private final List<ShuffleService.Stream> outputStreams;
+        private final List<PageProducer> pageProducers;
         private final PagesSerdeFactory serdeFactory;
         private final DataSize maxMemory;
 
@@ -134,7 +134,7 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<ShuffleService.Stream> outputStreams,
+                List<PageProducer> pageProducers,
                 PagesSerdeFactory serdeFactory,
                 DataSize maxMemory)
         {
@@ -148,7 +148,7 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.outputStreams = requireNonNull(outputStreams, "outputStreams is null");
+            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
@@ -157,7 +157,6 @@ public class PartitionedOutputOperator
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PartitionedOutputOperator.class.getSimpleName());
-            List<PageProducer> pageProducers = outputStreams.stream().map(PageProducer::new).collect(Collectors.toList());
             return new PartitionedOutputOperator(
                     operatorContext,
                     sourceTypes,
@@ -192,7 +191,7 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    outputStreams,
+                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }

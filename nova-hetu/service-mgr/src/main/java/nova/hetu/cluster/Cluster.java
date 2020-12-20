@@ -67,6 +67,9 @@ public class Cluster
         log.info("gRpc server started properly");
     }
 
+    public void shutdown() {
+        server.shutdownNow();
+    }
     private void joinCluster()
     {
         Futures.submit(() -> {

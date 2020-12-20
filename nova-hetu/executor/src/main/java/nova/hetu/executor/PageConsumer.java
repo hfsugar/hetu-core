@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nove.hetu.executor;
+package nova.hetu.executor;
 
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
@@ -27,7 +27,12 @@ public class PageConsumer
     PagesSerde serde;
     Future future;
 
-    public PageConsumer(String taskid, String bufferid, PagesSerde serde)
+    public static PageConsumer create(String taskid, String partitionId, PagesSerde serde)
+    {
+        return new PageConsumer(taskid, partitionId, serde);
+    }
+
+    PageConsumer(String taskid, String bufferid, PagesSerde serde)
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<SerializedPage>();
         this.serde = serde;

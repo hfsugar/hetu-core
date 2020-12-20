@@ -12,15 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nove.hetu.executor;
+package nova.hetu.executor;
 
 import com.google.common.util.concurrent.SettableFuture;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
-import nova.hetu.executor.ExecutorOuterClass;
-import nova.hetu.executor.ShuffleGrpc;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ExecutorService;

@@ -58,7 +58,7 @@ import io.prestosql.spi.type.Type;
 import io.prestosql.spiller.SpillSpaceTracker;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.ShuffleService;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 

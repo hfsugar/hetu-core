@@ -25,7 +25,8 @@ import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
+import nova.hetu.executor.ShuffleService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,7 +72,7 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
-        List<ShuffleService.Stream> outputStreams = createStreams(taskStateMachine.getTaskId(), totalPartitions, pagesSerde);
+        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde);
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -84,7 +85,7 @@ public class SqlTaskExecutionFactory
                         fragment.getStageExecutionDescriptor(),
                         fragment.getPartitionedSources(),
                         outputBuffer,
-                        outputStreams);
+                        producers);
             }
             catch (Throwable e) {
                 // planning failed
@@ -97,7 +98,7 @@ public class SqlTaskExecutionFactory
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
-                outputStreams,
+                producers,
                 sources,
                 localExecutionPlan,
                 taskExecutor,
@@ -105,13 +106,13 @@ public class SqlTaskExecutionFactory
                 splitMonitor);
     }
 
-    private List<ShuffleService.Stream> createStreams(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde)
+    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde)
     {
-        List<ShuffleService.Stream> streams = new ArrayList<>();
+        List<PageProducer> producers = new ArrayList<>();
         int numPartitions = totalPartitions.orElse(1); // default to 1 partition
         for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
-            streams.add(ShuffleService.getStream(taskId.toString(), String.valueOf(partition), pagesSerde));
+            producers.add(PageProducer.create(taskId.toString(), String.valueOf(partition), pagesSerde));
         }
-        return streams;
+        return producers;
     }
 }

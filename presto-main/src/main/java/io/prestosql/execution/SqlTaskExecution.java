@@ -39,7 +39,8 @@ import io.prestosql.operator.StageExecutionDescriptor;
 import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nove.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
+import nova.hetu.executor.ShuffleService;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -113,7 +114,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
-    private final List<ShuffleService.Stream> streams;
+    private final List<PageProducer> producers;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -147,7 +148,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Stream> outputStreams,
+            List<PageProducer> producers,
             List<TaskSource> sources,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
@@ -158,7 +159,7 @@ public class SqlTaskExecution
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
-                outputStreams,
+                producers,
                 localExecutionPlan,
                 taskExecutor,
                 queryMonitor,
@@ -176,7 +177,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
-            List<ShuffleService.Stream> streams,
+            List<PageProducer> producers,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -186,7 +187,7 @@ public class SqlTaskExecution
         this.taskId = taskStateMachine.getTaskId();
         this.taskContext = requireNonNull(taskContext, "taskContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-        this.streams = requireNonNull(streams, "outputStreams is null");
+        this.producers = requireNonNull(producers, "outputStreams is null");
 
         this.taskExecutor = requireNonNull(taskExecutor, "driverExecutor is null");
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
@@ -650,7 +651,7 @@ public class SqlTaskExecution
 
         // no more output will be created
         outputBuffer.setNoMorePages();
-        closeAllStreams(streams);
+        closeProducers(producers);
 
         // are there still pages in the output buffer
 //        if (!outputBuffer.isFinished()) {
@@ -661,21 +662,25 @@ public class SqlTaskExecution
         taskStateMachine.finished();
     }
 
-    private void closeAllStreams(List<ShuffleService.Stream> streams)
+    private void closeProducers(List<PageProducer> producers)
     {
-        for (ShuffleService.Stream stream : streams) {
+        for (PageProducer producer : producers) {
             try {
-                stream.close();
+                producer.close();
             }
             catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
 
-        for (ShuffleService.Stream stream : streams) {
-            while (!stream.isClosed()) {
+        for (PageProducer producer : producers) {
+            try {
                 // Waiting for all pages to be sent, do nothing
                 // FIXME: find a better way to handle this
+                producer.isClosed();
+            }
+            catch (Exception e) {
+                throw new RuntimeException(e);
             }
         }
     }
