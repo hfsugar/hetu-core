@@ -207,7 +207,6 @@ import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
 import nova.hetu.executor.PageProducer;
-import nova.hetu.executor.ShuffleService;
 
 import javax.inject.Inject;
 
@@ -417,7 +416,7 @@ public class LocalExecutionPlanner
                 partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
-            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, pageProducers, new TaskOutputFactory(outputBuffer, pageProducers));
+            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, pageProducers, new TaskOutputFactory(outputBuffer, pageProducers.get(0)));
         }
 
         // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed

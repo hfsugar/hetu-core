@@ -37,13 +37,17 @@ public class ShuffleClient
 
     private static synchronized ManagedChannel getOrCreateChannel(String host, int port)
     {
-        if (channel == null) {
-            channel = ManagedChannelBuilder
-                    .forAddress(host, port)
-                    .usePlaintext(/** FIXME: TLS disabled */)
-                    .build();
-        }
-        return channel;
+//        if (channel == null) {
+//            channel = ManagedChannelBuilder
+//                    .forAddress(host, port)
+//                    .usePlaintext(/** FIXME: TLS disabled */)
+//                    .build();
+//        }
+//        return channel;
+        return ManagedChannelBuilder
+                .forAddress(host, port)
+                .usePlaintext(/** FIXME: TLS disabled */)
+                .build();
     }
 
     /**

@@ -29,7 +29,7 @@ import io.prestosql.spi.type.RowType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.TestingTaskContext;
-import nova.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -131,7 +131,7 @@ public class BenchmarkPartitionedOutputOperator
                     false,
                     OptionalInt.empty(),
                     buffer,
-                    ImmutableList.of(ShuffleService.getStream("task-1", "0", serdeFactory.createPagesSerde())),
+                    ImmutableList.of(PageProducer.create("task-1", "0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
                     new DataSize(1, GIGABYTE));
             return (PartitionedOutputOperator) operatorFactory
                     .createOutputOperator(0, new PlanNodeId("plan-node-0"), TYPES, Function.identity(), serdeFactory)

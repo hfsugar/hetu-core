@@ -18,6 +18,7 @@ import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.Session;
 import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.buffer.OutputBuffer;
+import io.prestosql.execution.buffer.OutputBuffers;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.QueryContext;
 import io.prestosql.operator.TaskContext;
@@ -26,7 +27,6 @@ import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
 import nova.hetu.executor.PageProducer;
-import nova.hetu.executor.ShuffleService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +35,8 @@ import java.util.concurrent.Executor;
 
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static io.prestosql.execution.SqlTaskExecution.createSqlTaskExecution;
+import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
+import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static java.util.Objects.requireNonNull;
 
 public class SqlTaskExecutionFactory
@@ -64,7 +66,7 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions, PagesSerde pagesSerde)
+    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers outputBuffers)
     {
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
@@ -72,7 +74,7 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
-        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde);
+        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers.getType());
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -106,13 +108,26 @@ public class SqlTaskExecutionFactory
                 splitMonitor);
     }
 
-    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde)
+    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers.BufferType type)
     {
         List<PageProducer> producers = new ArrayList<>();
-        int numPartitions = totalPartitions.orElse(1); // default to 1 partition
-        for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
-            producers.add(PageProducer.create(taskId.toString(), String.valueOf(partition), pagesSerde));
+        if (type == PARTITIONED) {
+            for (int partition = 0; partition < totalPartitions.getAsInt(); partition++) { //partition id is 0 based
+                producers.add(PageProducer.create(getProducerId(taskId.toString(), partition), pagesSerde, PageProducer.Type.PARTITIONED));
+            }
         }
+        else if (type == BROADCAST) {
+            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.BROADCAST));
+        }
+        else {
+            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.BROADCAST));
+        }
+
         return producers;
+    }
+
+    private static String getProducerId(String taskId, int partitionId)
+    {
+        return String.format("%s-%d", taskId, partitionId);
     }
 }

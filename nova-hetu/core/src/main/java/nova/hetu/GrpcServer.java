@@ -25,6 +25,7 @@ public class GrpcServer
 {
     private static Logger log = Logger.getLogger(GrpcServer.class);
     private static Cluster cluster;
+
     private GrpcServer() {}
 
     public static void main(String[] args)

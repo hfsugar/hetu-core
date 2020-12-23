@@ -14,35 +14,30 @@
  */
 package nova.hetu.executor;
 
-import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
-import io.hetu.core.transport.execution.buffer.PageCodecMarker;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
-import io.prestosql.spi.Page;
+import nova.hetu.executor.PageProducer.Type;
 import org.apache.log4j.Logger;
 
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static io.airlift.slice.Slices.EMPTY_SLICE;
-
 /**
- ####Shuffle Service
- Shuffle service is responsible shuffling data between tasks. It should be easy for the user of Shuffle service to set up
- communication between tasks based on the DAG of stages.
-
- ######Requirements
- 1. A single point responsible for communication between tasks
- 2. Capable of `1 to 1`, `1 to M`, `M to 1` and `M to M` communication paradigms
- 3. Transparent back pressure
- 4. Non-blocking
-
- This is designed to allow easy reimplementation over other prototcal such as RSocket: https://github.com/rsocket/rsocket-java
+ * ####Shuffle Service
+ * Shuffle service is responsible shuffling data between tasks. It should be easy for the user of Shuffle service to set up
+ * communication between tasks based on the DAG of stages.
+ * <p>
+ * ######Requirements
+ * 1. A single point responsible for communication between tasks
+ * 2. Capable of `1 to 1`, `1 to M`, `M to 1` and `M to M` communication paradigms
+ * 3. Transparent back pressure
+ * 4. Non-blocking
+ * <p>
+ * This is designed to allow easy reimplementation over other prototcal such as RSocket: https://github.com/rsocket/rsocket-java
  */
-class ShuffleService
+public class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
     private static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
@@ -96,9 +91,9 @@ class ShuffleService
         }
     }
 
-    private static String toKey(String taskid, String bufferid)
+    private static String toKey(String producerId, String bufferid)
     {
-        return taskid + "/" + bufferid;
+        return producerId + "/" + bufferid;
     }
 
     private ExecutorOuterClass.Page transform(SerializedPage page)
@@ -116,71 +111,15 @@ class ShuffleService
      *
      * @return
      */
-    static Stream getStream(String taskid, String partitionId /** bufferid == partitionid */, PagesSerde serde)
+    static Stream getStream(String producerId, PagesSerde serde, Type type)
     {
-        log.info("Getting output stream for: " + taskid + "-" + partitionId);
-        String key = toKey(taskid, partitionId);
-        Stream out = streamMap.get(key);
+        log.info("Getting output stream for: " + producerId);
+        Stream out = streamMap.get(producerId);
         if (out == null) {
-            out = new Stream(key, serde);
-            Stream temp = streamMap.putIfAbsent(key, out);
+            out = new StreamFactory().create(producerId, serde, type);
+            Stream temp = streamMap.putIfAbsent(producerId, out);
             out = temp != null ? temp : out;
         }
         return out;
-    }
-
-    /**
-     * must be used in a the following way to ensure proper handling of releasing the resources
-     * try (Out out = ShuffleService.getOutStream(task)) {
-     * out.write(page);
-     * }
-     */
-    static class Stream
-            implements AutoCloseable
-    {
-        static final SerializedPage EOS = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
-        private final PagesSerde serde;
-        ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
-        String id;
-        boolean eos; // endOfStream
-
-        private Stream(String id, PagesSerde serde)
-        {
-            this.id = id;
-            this.serde = serde;
-        }
-
-        SerializedPage take()
-                throws InterruptedException
-        {
-            return queue.take();
-        }
-
-        /**
-         * write out the page synchronously
-         *
-         * @param page
-         */
-        public void write(Page page)
-                throws InterruptedException
-        {
-            if (eos) {
-                throw new IllegalStateException("Output stream is closed already");
-            }
-            queue.put(serde.serialize(page));
-        }
-
-        public boolean isClosed()
-        {
-            return eos && queue.isEmpty();
-        }
-
-        @Override
-        public void close()
-                throws Exception
-        {
-            eos = true;
-            queue.put(EOS);
-        }
     }
 }

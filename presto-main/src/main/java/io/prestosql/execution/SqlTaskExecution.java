@@ -27,6 +27,7 @@ import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffer;
+import io.prestosql.execution.buffer.OutputBuffers;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.execution.executor.TaskHandle;
 import io.prestosql.operator.Driver;
@@ -40,7 +41,6 @@ import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import nova.hetu.executor.PageProducer;
-import nova.hetu.executor.ShuffleService;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -288,6 +288,17 @@ public class SqlTaskExecution
     public TaskContext getTaskContext()
     {
         return taskContext;
+    }
+
+    public void updatePageProducers(OutputBuffers outputBuffers)
+    {
+        for (PageProducer pageProducer : producers) {
+            List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
+            pageProducer.addConsumers(newOutputBuffers);
+            if (outputBuffers.isNoMoreBufferIds()) {
+                pageProducer.setNoMoreConsumers();
+            }
+        }
     }
 
     public void addSources(List<TaskSource> sources)

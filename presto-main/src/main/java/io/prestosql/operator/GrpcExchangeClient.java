@@ -61,7 +61,7 @@ public class GrpcExchangeClient
 //                paths[3],
 //                paths[5],
 //                pageOutputBuffer);
-        pageConsumer = new PageConsumer(paths[3], paths[5], pagesSerde);
+        pageConsumer = PageConsumer.create(paths[3], paths[5], pagesSerde);
     }
 
     @Override

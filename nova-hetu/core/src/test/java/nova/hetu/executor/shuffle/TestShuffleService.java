@@ -54,7 +54,8 @@ public class TestShuffleService
     }
 
     @AfterSuite
-    public void tearDown() {
+    public void tearDown()
+    {
         GrpcServer.shutdown();
     }
 
@@ -67,7 +68,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
 
-        PageProducer producer = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
         Thread producerThread = createProducerThread(producer, 0, 10, 100);
         producerThread.start();
         producerThread.join();
@@ -88,6 +89,51 @@ public class TestShuffleService
     }
 
     @Test
+    public void TestSingleProducerMultipleConsumerQueue()
+            throws Exception
+    {
+        String taskid = getTaskId();
+        String bufferid = "0";
+
+        PagesSerde serde = new MockConstantPagesSerde();
+
+        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        Thread producerThread = createProducerThread(producer, 0, 10, 100);
+        producerThread.start();
+//        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
+//        Thread producerThread2 = createProducerThread(producer2, 0, 10, 100);
+//        producerThread2.start();
+//        producerThread2.join();
+        producerThread.join();
+
+        producer.close();
+
+        long[] result = new long[10];
+        long[] result2 = new long[10];
+
+        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer2 = PageConsumer.create(taskid, bufferid, serde);
+        Thread consumerThread = createConsumerThread(consumer, result, 100);
+        Thread consumerThread2 = createConsumerThread(consumer2, result2, 100);
+        consumerThread.start();
+        consumerThread2.start();
+
+        consumerThread.join();
+        consumerThread2.join();
+
+        //ensure all results received
+        for (int i = 0; i < 10; i++) {
+            assertEquals(i, result[i]);
+        }
+        //ensure all results received
+        for (int i = 0; i < 10; i++) {
+            assertEquals(i, result2[i]);
+        }
+        assertEquals(true, consumer.isEnded());
+        assertEquals(true, consumer2.isEnded());
+    }
+
+    @Test
     public void TestMultiProducerSingleConsumerWithDelayQueue()
             throws Exception
     {
@@ -99,8 +145,8 @@ public class TestShuffleService
         PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
         Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
@@ -144,8 +190,8 @@ public class TestShuffleService
 
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
         Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
@@ -185,10 +231,10 @@ public class TestShuffleService
         PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
-        PageProducer producer3 = PageProducer.create(taskid, bufferid, serde);
-        PageProducer producer4 = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer3 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer4 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 1000, 0);
         Thread producer2Thread = createProducerThread(producer2, 1000, 2000, 0);
@@ -276,7 +322,7 @@ public class TestShuffleService
         String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
-        PageProducer producer = PageProducer.create(taskid, bufferid, serde);
+        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
         Thread producerThread = createProducerThread(producer, 0, 10, 100);
         producerThread.start();
         producerThread.join();
@@ -307,10 +353,11 @@ public class TestShuffleService
                     }
                     count++;
 
+                    count++;
                     int value = (int) page.getBlock(0).getLong(0, 0);
                     assertEquals(0, result[value], "received duplicate page");
                     result[value] = value;
-//                    System.out.println("taking the output: " + page + " content:" + page.getBlock(0).getLong(0, 0));
+                    System.out.println("taking the output: " + page + " content:" + page.getBlock(0).getLong(0, 0));
                     if (delay > 0) {
                         Thread.sleep(random.nextInt(delay));
                     }

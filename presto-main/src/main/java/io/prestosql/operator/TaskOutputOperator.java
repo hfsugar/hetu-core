@@ -20,12 +20,10 @@ import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import nova.hetu.executor.PageProducer;
-import nova.hetu.executor.ShuffleService;
 
 import java.util.List;
 import java.util.function.Function;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
 public class TaskOutputOperator

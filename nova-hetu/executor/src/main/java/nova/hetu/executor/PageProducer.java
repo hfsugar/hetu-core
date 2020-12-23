@@ -17,42 +17,72 @@ package nova.hetu.executor;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
 
+import java.util.List;
+
 public class PageProducer
 {
-    /**
-     * Creates a Page Producer for sending pages to a taskid of a specific partition, when the output is not parititoned
-     * the default partitionid is 0
-     * @param taskid
-     * @param partitionId
-     * @param serde
-     * @return
-     */
-    public static PageProducer create(String taskid, String partitionId, PagesSerde serde /** can we hide this? */)
+    private final Stream stream;
+    private final Type type;
+
+    public enum Type
     {
-        return new PageProducer(ShuffleService.getStream(taskid, partitionId, serde));
+        PARTITIONED,
+        BROADCAST,
+        ARBITRARY,
     }
 
-    private ShuffleService.Stream out;
-
-    PageProducer(ShuffleService.Stream out)
+    PageProducer(Stream stream, Type type)
     {
-        this.out = out;
+        this.stream = stream;
+        this.type = type;
+    }
+
+    public static PageProducer create(String producerId, PagesSerde serde/** can we hide this? */)
+    {
+        return create(producerId, serde, Type.PARTITIONED);
+    }
+
+    /**
+     * Creates a Page Producer for sending pages to a producerId of a specific partition, when the output is not parititoned
+     * the default partitionid is 0
+     *
+     * @param producerId
+     * @param serde
+     * @param type
+     * @return
+     */
+    public static PageProducer create(String producerId, PagesSerde serde, /** can we hide this? */Type type)
+    {
+        Stream stream = ShuffleService.getStream(producerId, serde, type);
+        return new PageProducer(stream, type);
     }
 
     public void send(Page page)
             throws InterruptedException
     {
-        out.write(page);
+        stream.write(page);
+    }
+
+    public void addConsumers(List<Integer> newConsumers)
+    {
+        if (type != Type.PARTITIONED) {
+            stream.addChannels(newConsumers);
+        }
+    }
+
+    public void setNoMoreConsumers()
+    {
+        stream.setNoMoreChannels();
     }
 
     public void close()
             throws Exception
     {
-        out.close();
+        stream.close();
     }
 
     public boolean isClosed()
     {
-        return out.isClosed();
+        return stream.isClosed();
     }
 }

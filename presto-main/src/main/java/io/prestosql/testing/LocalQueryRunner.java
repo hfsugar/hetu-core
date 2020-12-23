@@ -185,7 +185,7 @@ import io.prestosql.transaction.TransactionManagerConfig;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
-import nova.hetu.executor.ShuffleService;
+import nova.hetu.executor.PageProducer;
 import org.intellij.lang.annotations.Language;
 import org.weakref.jmx.MBeanExporter;
 import org.weakref.jmx.testing.TestingMBeanServer;
@@ -781,7 +781,7 @@ public class LocalQueryRunner
                 subplan.getFragment().getPartitioningScheme().getOutputLayout(),
                 plan.getTypes(),
                 subplan.getFragment().getPartitionedSources(),
-                ImmutableList.of(ShuffleService.getStream("task-1", "0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde())),
+                ImmutableList.of(PageProducer.create("task-1", "0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde(), PageProducer.Type.BROADCAST)),
                 outputFactory);
 
         // generate sources
