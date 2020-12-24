@@ -39,6 +39,7 @@ import io.prestosql.operator.TaskContext;
 import io.prestosql.operator.TaskStats;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.cluster.ClusterConfig;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -295,7 +296,8 @@ public class SqlTask
                 systemMemoryReservation,
                 revocableMemoryReservation,
                 fullGcCount,
-                fullGcTime);
+                fullGcTime,
+                ClusterConfig.config.local.port);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)
@@ -405,6 +407,7 @@ public class SqlTask
 
             if (taskExecution != null) {
                 taskExecution.addSources(sources);
+                taskExecution.updatePageProducers(outputBuffers);
             }
         }
         catch (Error e) {

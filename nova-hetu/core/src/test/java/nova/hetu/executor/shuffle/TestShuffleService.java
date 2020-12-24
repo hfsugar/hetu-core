@@ -25,6 +25,7 @@ import io.prestosql.spi.block.LongArrayBlock;
 import nova.hetu.GrpcServer;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.ProducerInfo;
 import nova.hetu.shuffle.rsocket.RsServer;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
@@ -79,7 +80,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
         consumerThread.start();
         consumerThread.join();
@@ -113,8 +114,8 @@ public class TestShuffleService
         long[] result = new long[10];
         long[] result2 = new long[10];
 
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
-        PageConsumer consumer2 = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
+        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
         Thread consumerThread2 = createConsumerThread(consumer2, result2, 100);
         consumerThread.start();
@@ -144,7 +145,7 @@ public class TestShuffleService
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
         PageProducer producer1 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
@@ -186,7 +187,7 @@ public class TestShuffleService
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
 
         assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
@@ -230,7 +231,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
         PageProducer producer1 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
@@ -282,7 +283,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
@@ -332,7 +333,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
         consumerThread.start();
         consumerThread.join();

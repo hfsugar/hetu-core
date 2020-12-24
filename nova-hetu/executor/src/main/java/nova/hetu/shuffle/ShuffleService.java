@@ -49,34 +49,44 @@ public class ShuffleService
     @Override
     public void getResult(ShuffleOuterClass.Producer producer, StreamObserver<ShuffleOuterClass.Page> responseObserver)
     {
-        log.info("====================== Get result for " + producer.getProducerId());
+        final String producerId = producer.getProducerId();
+        log.info("====================== Get result for " + producerId);
         ServerCallStreamObserver<ShuffleOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ShuffleOuterClass.Page>) responseObserver;
         Stream stream = Stream.get(producer.getProducerId());
 
         /**
          * Wait until stream is created, another way is to simply return and let the client try again
          */
-        while (stream == null && !serverCallStreamObserver.isCancelled()) {
-            stream = Stream.get(producer.getProducerId());
+        long maxWait = 1000;
+        long sleepInterval = 50;
+        while (stream == null && !serverCallStreamObserver.isCancelled() && maxWait > 0) {
+            stream = Stream.get(producerId);
             try {
-                Thread.sleep(1000);
+                maxWait -= sleepInterval;
+                Thread.sleep(sleepInterval);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
             if (stream != null) {
-                log.info("Got output stream after retry " + producer.getProducerId());
+                log.info("Got output stream after retry " + producerId);
             }
         }
 
-//        if (stream == null) {
-//            throw new RuntimeException("invalid task: " + request.getTaskId());
-//        }
+        if (stream == null) {
+            throw new RuntimeException("invalid producer: " + producerId);
+        }
         int count = 0;
         SerializedPage page;
         try {
-            while (true && !serverCallStreamObserver.isCancelled()) {
-                page = stream.take();
+            while (!serverCallStreamObserver.isCancelled()) {
+                if (stream instanceof BroadcastStream) {
+                    int channelId = Integer.parseInt(producerId.split("-")[1]);
+                    page = ((BroadcastStream) stream).take(channelId);
+                }
+                else {
+                    page = stream.take();
+                }
                 if (page == Stream.EOS) {
                     break;
                 }
@@ -91,7 +101,7 @@ public class ShuffleService
         finally {
             Stream.destroy(stream);
             responseObserver.onCompleted();
-            log.info("====================== Finished sending pages for " + producer.getProducerId() + " count:" + count);
+            log.info("====================== Finished sending pages for " + producerId + " count:" + count);
         }
     }
 

@@ -111,16 +111,17 @@ public class SqlTaskExecutionFactory
     private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers.BufferType type)
     {
         List<PageProducer> producers = new ArrayList<>();
+        int numPartitions = totalPartitions.orElse(1); // TODO: check when can this be empty
         if (type == PARTITIONED) {
-            for (int partition = 0; partition < totalPartitions.getAsInt(); partition++) { //partition id is 0 based
+            for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
                 producers.add(PageProducer.create(getProducerId(taskId.toString(), partition), pagesSerde, PageProducer.Type.PARTITIONED));
             }
         }
         else if (type == BROADCAST) {
-            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.BROADCAST));
+            producers.add(PageProducer.create(taskId.toString(), pagesSerde, PageProducer.Type.BROADCAST));
         }
         else {
-            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.BROADCAST));
+            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.ARBITRARY));
         }
 
         return producers;

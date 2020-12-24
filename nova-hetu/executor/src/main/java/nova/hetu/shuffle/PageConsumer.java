@@ -17,7 +17,6 @@ package nova.hetu.shuffle;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
-import nova.hetu.shuffle.rsocket.RsShuffleClient;
 
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -28,18 +27,18 @@ public class PageConsumer
     PagesSerde serde;
     Future future;
 
-    public static PageConsumer create(String producerId, PagesSerde serde)
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
-        return new PageConsumer(producerId, serde);
+        return new PageConsumer(producerInfo, serde);
     }
 
-    PageConsumer(String producerId, PagesSerde serde)
+    PageConsumer(ProducerInfo producerInfo, PagesSerde serde)
     {
-        this.pageOutputBuffer = new LinkedBlockingQueue<SerializedPage>();
+        this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
 
-        future = RsShuffleClient.getResults("127.0.0.1", 7878, producerId, pageOutputBuffer);
-        //future = ShuffleClient.getResults("127.0.0.1", 16544, producerId, pageOutputBuffer);
+//        future = RsShuffleClient.getResults(producerInfo.getHost(), 7878, producerInfo.getProducerId(), pageOutputBuffer);
+        future = ShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer);
     }
 
     public Page poll()

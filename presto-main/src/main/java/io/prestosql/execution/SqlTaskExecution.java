@@ -295,9 +295,6 @@ public class SqlTaskExecution
         for (PageProducer pageProducer : producers) {
             List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
             pageProducer.addConsumers(newOutputBuffers);
-            if (outputBuffers.isNoMoreBufferIds()) {
-                pageProducer.setNoMoreConsumers();
-            }
         }
     }
 

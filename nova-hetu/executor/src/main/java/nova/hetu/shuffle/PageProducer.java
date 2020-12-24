@@ -70,11 +70,6 @@ public class PageProducer
         }
     }
 
-    public void setNoMoreConsumers()
-    {
-        stream.setNoMoreChannels();
-    }
-
     public void close()
             throws Exception
     {

@@ -153,7 +153,7 @@ public class TestSqlTaskExecution
                     TABLE_SCAN_NODE_ID,
                     outputBuffer,
                     Function.identity(),
-                    PageProducer.create(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
+                    PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
             LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
                     ImmutableList.of(new DriverFactory(
                             0,
@@ -169,7 +169,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
-                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
+                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,
@@ -377,7 +377,7 @@ public class TestSqlTaskExecution
                     joinCNodeId,
                     outputBuffer,
                     Function.identity(),
-                    PageProducer.create(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
+                    PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
             TestingCrossJoinOperatorFactory joinOperatorFactoryA = new TestingCrossJoinOperatorFactory(2, joinANodeId, buildStatesA);
             TestingCrossJoinOperatorFactory joinOperatorFactoryB = new TestingCrossJoinOperatorFactory(102, joinBNodeId, buildStatesB);
             TestingCrossJoinOperatorFactory joinOperatorFactoryC = new TestingCrossJoinOperatorFactory(3, joinCNodeId, buildStatesC);
@@ -422,7 +422,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
-                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString(), "0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
+                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,

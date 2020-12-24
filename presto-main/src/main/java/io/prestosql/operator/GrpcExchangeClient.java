@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
 import nova.hetu.shuffle.PageConsumer;
+import nova.hetu.shuffle.ProducerInfo;
 
 import javax.annotation.Nullable;
 
@@ -53,15 +54,7 @@ public class GrpcExchangeClient
     public void addLocation(URI location)
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
-        String[] paths = location.getPath().split("/");
-
-//        getResult = ShuffleClient.getResults(
-//                location.getHost(),
-//                16544 /** BIG BIG HACK, ASSUME GRPC LISTEN ON THIS PORT, SHOULD CHANGE TO USE CONFIGURATION*/,
-//                paths[3],
-//                paths[5],
-//                pageOutputBuffer);
-        pageConsumer = PageConsumer.create(paths[3], paths[5], pagesSerde);
+        pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
     }
 
     @Override

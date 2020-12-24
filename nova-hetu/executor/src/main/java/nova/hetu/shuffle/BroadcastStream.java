@@ -28,6 +28,7 @@ public class BroadcastStream
         extends Stream
 {
     PagesSerde serde;
+    BlockingQueue<SerializedPage> initialPages = new LinkedBlockingQueue<>();
     Map<Integer, BlockingQueue<SerializedPage>> channels = new HashMap<>();
 
     public BroadcastStream(String id, PagesSerde serde)
@@ -38,21 +39,67 @@ public class BroadcastStream
 
     @Override
     public void write(Page page)
+            throws InterruptedException
     {
+        SerializedPage serializedPage = serde.serialize(page);
+        if (channels.isEmpty()) {
+            initialPages.put(serializedPage);
+            return;
+        }
+
         for (BlockingQueue<SerializedPage> queue : channels.values()) {
-            queue.offer(serde.serialize(page));
+            queue.offer(serializedPage);
         }
     }
 
     public SerializedPage take(int channelId)
+            throws InterruptedException
     {
-        return channels.get(channelId).poll();
+        BlockingQueue<SerializedPage> channel = channels.get(channelId);
+        if (channel == null) {
+            return null;
+        }
+        return channel.take();
     }
 
     public void addChannels(List<Integer> channelIds)
     {
         for (int channelId : channelIds) {
             channels.put(channelId, new LinkedBlockingQueue<>());
+            streamMap.put(id + "-" + channelId, this);
         }
+        streamMap.remove(id);
+        while (!initialPages.isEmpty()) {
+            SerializedPage page = initialPages.poll();
+            channels.values().forEach(channel -> {
+                try {
+                    channel.put(page);
+                }
+                catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+    }
+
+    @Override
+    public boolean isClosed()
+    {
+        return eos && queue.isEmpty();
+    }
+
+    @Override
+    public void close()
+            throws Exception
+    {
+        eos = true;
+        for (BlockingQueue<SerializedPage> channel : channels.values()) {
+            channel.put(EOS);
+        }
+    }
+
+    static void destroy(Stream stream)
+    {
+        streamMap.remove(stream.id);
     }
 }

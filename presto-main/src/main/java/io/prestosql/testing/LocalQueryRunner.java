@@ -781,7 +781,7 @@ public class LocalQueryRunner
                 subplan.getFragment().getPartitioningScheme().getOutputLayout(),
                 plan.getTypes(),
                 subplan.getFragment().getPartitionedSources(),
-                ImmutableList.of(PageProducer.create("task-1", "0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde(), PageProducer.Type.BROADCAST)),
+                ImmutableList.of(PageProducer.create("task-1-0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde(), PageProducer.Type.BROADCAST)),
                 outputFactory);
 
         // generate sources

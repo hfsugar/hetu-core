@@ -289,7 +289,10 @@ public class SqlQueryScheduler
     private static void updateQueryOutputLocations(QueryStateMachine queryStateMachine, String rootBufferId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations)
     {
         Set<URI> bufferLocations = tasks.stream()
-                .map(task -> task.getTaskStatus().getSelf())
+                .map(task -> {
+                    URI location = task.getTaskStatus().getSelf();
+                    return uriBuilderFrom(location).port(task.getTaskStatus().getStreamPort()).build();
+                })
                 .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
                 .collect(toImmutableSet());
         queryStateMachine.updateOutputLocations(bufferLocations, noMoreExchangeLocations);
@@ -575,7 +578,6 @@ public class SqlQueryScheduler
                     // modify parent and children based on the results of the scheduling
                     if (result.isFinished()) {
                         stage.schedulingComplete();
-                        LOG.info("Scheduled complete for stage " + stage.getStageId());
                     }
                     else if (!result.getBlocked().isDone()) {
                         blockedStages.add(result.getBlocked());

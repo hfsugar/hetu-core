@@ -37,13 +37,12 @@ public class Stream
 {
     public static final SerializedPage EOS = new SerializedPage(EMPTY_SLICE, PageCodecMarker.MarkerSet.empty(), 0, 0);
     private static Logger log = Logger.getLogger(Stream.class);
-    private static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
+    static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
 
     private final PagesSerde serde;
     ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
     String id;
     boolean eos; // endOfStream
-    boolean noMoreChannels;
 
     /**
      * Returns a OutStream which will be used PRODUCER to sent the data to be returned to service caller
@@ -66,11 +65,6 @@ public class Stream
     {
         log.info("Getting output stream for: " + producerId);
         return streamMap.get(producerId);
-    }
-
-    static void destroy(Stream stream)
-    {
-        streamMap.remove(stream.id);
     }
 
     Stream(String id, PagesSerde serde)
@@ -103,11 +97,6 @@ public class Stream
     {
     }
 
-    public void setNoMoreChannels()
-    {
-        noMoreChannels = true;
-    }
-
     public boolean isClosed()
     {
         return eos && queue.isEmpty();
@@ -119,5 +108,10 @@ public class Stream
     {
         eos = true;
         queue.put(EOS);
+    }
+
+    static void destroy(Stream stream)
+    {
+        streamMap.remove(stream.id);
     }
 }

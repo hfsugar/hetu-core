@@ -56,6 +56,7 @@ public class TaskStatus
     private final long version;
     private final TaskState state;
     private final URI self;
+    private final int streamPort;
     private final String nodeId;
     private final Set<Lifespan> completedDriverGroups;
 
@@ -90,7 +91,8 @@ public class TaskStatus
             @JsonProperty("systemMemoryReservation") DataSize systemMemoryReservation,
             @JsonProperty("revocableMemoryReservation") DataSize revocableMemoryReservation,
             @JsonProperty("fullGcCount") long fullGcCount,
-            @JsonProperty("fullGcTime") Duration fullGcTime)
+            @JsonProperty("fullGcTime") Duration fullGcTime,
+            @JsonProperty("streamPort") int streamPort)
     {
         this.taskId = requireNonNull(taskId, "taskId is null");
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
@@ -99,6 +101,7 @@ public class TaskStatus
         this.version = version;
         this.state = requireNonNull(state, "state is null");
         this.self = requireNonNull(self, "self is null");
+        this.streamPort = streamPort;
         this.nodeId = requireNonNull(nodeId, "nodeId is null");
         this.completedDriverGroups = requireNonNull(completedDriverGroups, "completedDriverGroups is null");
 
@@ -150,6 +153,12 @@ public class TaskStatus
     public URI getSelf()
     {
         return self;
+    }
+
+    @JsonProperty
+    public int getStreamPort()
+    {
+        return streamPort;
     }
 
     @JsonProperty
@@ -233,7 +242,7 @@ public class TaskStatus
                 .toString();
     }
 
-    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId)
+    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId, int streamPort)
     {
         return new TaskStatus(
                 taskId,
@@ -252,7 +261,8 @@ public class TaskStatus
                 new DataSize(0, BYTE),
                 new DataSize(0, BYTE),
                 0,
-                new Duration(0, MILLISECONDS));
+                new Duration(0, MILLISECONDS),
+                streamPort);
     }
 
     public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
@@ -274,6 +284,7 @@ public class TaskStatus
                 taskStatus.getSystemMemoryReservation(),
                 taskStatus.getRevocableMemoryReservation(),
                 taskStatus.getFullGcCount(),
-                taskStatus.getFullGcTime());
+                taskStatus.getFullGcTime(),
+                taskStatus.getStreamPort());
     }
 }
