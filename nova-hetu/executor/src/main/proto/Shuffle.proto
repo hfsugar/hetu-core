@@ -14,35 +14,14 @@
  */
 syntax = "proto3";
 
-package nova.hetu.executor;
-
-service Executor {
-  /**
-  should we combine the following two? enqueue will require a Split with reference to a stage,
-  which one is easier to understand?
-   */
-  rpc run (Stage) returns (stream Page) {}
-  rpc enqueue (Split) returns (Split) {}
-}
+package nova.hetu.shuffle;
 
 service Shuffle {
-  rpc getResult(Task) returns (stream Page) {}
+  rpc getResult(Producer) returns (stream Page) {}
 }
 
-message Task { //FIXME: this is hack to stick with the current interfce,
-  string taskId = 1;
-  string bufferId = 2;
-  int64 token = 3;
-  string maxSize = 4;
-}
-
-message Stage {
-
-}
-
-message Split {
-  int32 stageId = 1;
-  string split = 2;
+message Producer { //FIXME: this is hack to stick with the current interfce,
+  string producerId = 1;
 }
 
 /**

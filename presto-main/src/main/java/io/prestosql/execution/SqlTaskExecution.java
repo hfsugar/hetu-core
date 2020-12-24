@@ -40,7 +40,7 @@ import io.prestosql.operator.StageExecutionDescriptor;
 import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;

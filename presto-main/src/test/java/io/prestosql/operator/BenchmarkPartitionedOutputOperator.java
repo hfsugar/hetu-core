@@ -29,7 +29,7 @@ import io.prestosql.spi.type.RowType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.TestingTaskContext;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;

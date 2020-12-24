@@ -12,11 +12,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.executor;
+package nova.hetu.shuffle;
 
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
+import nova.hetu.shuffle.rsocket.RsShuffleClient;
 
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -27,16 +28,18 @@ public class PageConsumer
     PagesSerde serde;
     Future future;
 
-    public static PageConsumer create(String taskid, String partitionId, PagesSerde serde)
+    public static PageConsumer create(String producerId, PagesSerde serde)
     {
-        return new PageConsumer(taskid, partitionId, serde);
+        return new PageConsumer(producerId, serde);
     }
 
-    PageConsumer(String taskid, String bufferid, PagesSerde serde)
+    PageConsumer(String producerId, PagesSerde serde)
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<SerializedPage>();
         this.serde = serde;
-        future = ShuffleClient.getResults("127.0.0.1", 16544, taskid, bufferid, pageOutputBuffer);
+
+        future = RsShuffleClient.getResults("127.0.0.1", 7878, producerId, pageOutputBuffer);
+        //future = ShuffleClient.getResults("127.0.0.1", 16544, producerId, pageOutputBuffer);
     }
 
     public Page poll()

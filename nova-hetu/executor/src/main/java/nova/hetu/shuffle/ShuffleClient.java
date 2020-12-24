@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.executor;
+package nova.hetu.shuffle;
 
 import com.google.common.util.concurrent.SettableFuture;
 import io.grpc.ManagedChannel;
@@ -56,11 +56,10 @@ public class ShuffleClient
      *
      * @param host the host the task is running
      * @param port the port the task is listening
-     * @param taskid identifier of the task
-     * @param bufferid identifier of the partition of the task to be retrieved
+     * @param producerId identifier of the task
      * @return
      */
-    public static Future getResults(String host, int port, String taskid, String bufferid, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
+    public static Future getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
     {
         ManagedChannel channel = getOrCreateChannel(host, port);
 
@@ -68,11 +67,10 @@ public class ShuffleClient
 
         ShuffleGrpc.ShuffleStub shuffler = ShuffleGrpc.newStub(channel);
 
-        ExecutorOuterClass.Task task = ExecutorOuterClass.Task.newBuilder()
-                .setTaskId(taskid)
-                .setBufferId(bufferid)
+        ShuffleOuterClass.Producer task = ShuffleOuterClass.Producer.newBuilder()
+                .setProducerId(producerId)
                 .build();
-        log.info("====================== request " + task.getTaskId() + "-" + task.getBufferId());
+        log.info("====================== request " + producerId);
 
         /**
          * get the result in a new thread, which should add the result into the pages buffer
@@ -82,7 +80,7 @@ public class ShuffleClient
     }
 
     private static class ShuffleStreamObserver
-            implements StreamObserver<ExecutorOuterClass.Page>
+            implements StreamObserver<ShuffleOuterClass.Page>
     {
         LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
         SettableFuture<Boolean> notificationFuture;
@@ -95,7 +93,7 @@ public class ShuffleClient
         }
 
         @Override
-        public void onNext(ExecutorOuterClass.Page page)
+        public void onNext(ShuffleOuterClass.Page page)
         {
             count++;
             SerializedPage spage = new SerializedPage(page.getSliceArray().toByteArray(), (byte) page.getPageCodecMarkers(), page.getPositionCount(), page.getUncompressedSizeInBytes());

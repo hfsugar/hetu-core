@@ -19,7 +19,7 @@ import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
 import java.util.function.Function;

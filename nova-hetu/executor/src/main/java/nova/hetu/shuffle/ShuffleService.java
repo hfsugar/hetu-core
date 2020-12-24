@@ -12,17 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.executor;
+package nova.hetu.shuffle;
 
 import com.google.protobuf.ByteString;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
-import nova.hetu.executor.PageProducer.Type;
 import org.apache.log4j.Logger;
-
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ####Shuffle Service
@@ -40,8 +36,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ShuffleService
         extends ShuffleGrpc.ShuffleImplBase
 {
-    private static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
-
     private static Logger log = Logger.getLogger(ShuffleService.class);
 
     public ShuffleService() {}
@@ -49,19 +43,29 @@ public class ShuffleService
     /**
      * Down stream operators call this method via gRpc to retrieve the output of the task
      *
-     * @param request
+     * @param producer
      * @param responseObserver
      */
     @Override
-    public void getResult(ExecutorOuterClass.Task request, StreamObserver<ExecutorOuterClass.Page> responseObserver)
+    public void getResult(ShuffleOuterClass.Producer producer, StreamObserver<ShuffleOuterClass.Page> responseObserver)
     {
-        log.info("====================== Get result for " + request.getTaskId() + "-" + request.getBufferId());
-        ServerCallStreamObserver<ExecutorOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ExecutorOuterClass.Page>) responseObserver;
-        Stream stream = streamMap.get(toKey(request.getTaskId(), request.getBufferId()));
+        log.info("====================== Get result for " + producer.getProducerId());
+        ServerCallStreamObserver<ShuffleOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ShuffleOuterClass.Page>) responseObserver;
+        Stream stream = Stream.get(producer.getProducerId());
+
+        /**
+         * Wait until stream is created, another way is to simply return and let the client try again
+         */
         while (stream == null && !serverCallStreamObserver.isCancelled()) {
-            stream = streamMap.get(toKey(request.getTaskId(), request.getBufferId()));
+            stream = Stream.get(producer.getProducerId());
+            try {
+                Thread.sleep(1000);
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             if (stream != null) {
-                log.info("Got output stream after retry " + request.getTaskId() + "-" + request.getBufferId());
+                log.info("Got output stream after retry " + producer.getProducerId());
             }
         }
 
@@ -85,9 +89,9 @@ public class ShuffleService
             throw new RuntimeException(e);
         }
         finally {
-            streamMap.remove(stream.id);
+            Stream.destroy(stream);
             responseObserver.onCompleted();
-            log.info("====================== Finished sending pages for " + request.getTaskId() + "-" + request.getBufferId() + " count:" + count);
+            log.info("====================== Finished sending pages for " + producer.getProducerId() + " count:" + count);
         }
     }
 
@@ -96,30 +100,13 @@ public class ShuffleService
         return producerId + "/" + bufferid;
     }
 
-    private ExecutorOuterClass.Page transform(SerializedPage page)
+    private ShuffleOuterClass.Page transform(SerializedPage page)
     {
-        return ExecutorOuterClass.Page.newBuilder()
+        return ShuffleOuterClass.Page.newBuilder()
                 .setSliceArray(ByteString.copyFrom(page.getSliceArray()))
                 .setPageCodecMarkers(page.getPageCodecMarkers())
                 .setPositionCount(page.getPositionCount())
                 .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes())
                 .build();
-    }
-
-    /**
-     * Returns a OutStream which will be used PRODUCER to sent the data to be returned to service caller
-     *
-     * @return
-     */
-    static Stream getStream(String producerId, PagesSerde serde, Type type)
-    {
-        log.info("Getting output stream for: " + producerId);
-        Stream out = streamMap.get(producerId);
-        if (out == null) {
-            out = new StreamFactory().create(producerId, serde, type);
-            Stream temp = streamMap.putIfAbsent(producerId, out);
-            out = temp != null ? temp : out;
-        }
-        return out;
     }
 }

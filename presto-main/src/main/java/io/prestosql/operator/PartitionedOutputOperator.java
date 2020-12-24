@@ -29,7 +29,7 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
 import java.util.Optional;

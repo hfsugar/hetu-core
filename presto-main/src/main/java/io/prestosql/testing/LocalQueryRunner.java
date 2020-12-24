@@ -185,7 +185,7 @@ import io.prestosql.transaction.TransactionManagerConfig;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 import org.intellij.lang.annotations.Language;
 import org.weakref.jmx.MBeanExporter;
 import org.weakref.jmx.testing.TestingMBeanServer;

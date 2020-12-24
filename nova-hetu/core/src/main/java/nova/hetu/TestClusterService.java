@@ -17,8 +17,8 @@ package nova.hetu;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import nova.hetu.cluster.ClusterConfig;
-import nova.hetu.executor.ExecutorOuterClass;
-import nova.hetu.executor.ShuffleGrpc;
+import nova.hetu.shuffle.ShuffleGrpc;
+import nova.hetu.shuffle.ShuffleOuterClass;
 
 import java.net.UnknownHostException;
 import java.util.Iterator;
@@ -33,7 +33,7 @@ public class TestClusterService
         ManagedChannel channel = ManagedChannelBuilder.forAddress(ClusterConfig.config.local.ip, ClusterConfig.config.local.port).usePlaintext().build();
 
         ShuffleGrpc.ShuffleBlockingStub stub = ShuffleGrpc.newBlockingStub(channel);
-        Iterator<ExecutorOuterClass.Page> pages = stub.getResult(ExecutorOuterClass.Task.newBuilder().setTaskId("1").setBufferId("2").build());
+        Iterator<ShuffleOuterClass.Page> pages = stub.getResult(ShuffleOuterClass.Producer.newBuilder().setProducerId("1").build());
         while (pages.hasNext()) {
             System.out.println(pages.next());
         }

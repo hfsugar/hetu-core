@@ -23,8 +23,9 @@ import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockEncodingSerde;
 import io.prestosql.spi.block.LongArrayBlock;
 import nova.hetu.GrpcServer;
-import nova.hetu.executor.PageConsumer;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageConsumer;
+import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.rsocket.RsServer;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -49,7 +50,9 @@ public class TestShuffleService
 
     @BeforeSuite
     public void setup()
+            throws InterruptedException
     {
+        RsServer.start();
         GrpcServer.start();
     }
 
@@ -68,7 +71,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
 
-        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
         Thread producerThread = createProducerThread(producer, 0, 10, 100);
         producerThread.start();
         producerThread.join();
@@ -76,7 +79,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
         consumerThread.start();
         consumerThread.join();
@@ -88,7 +91,6 @@ public class TestShuffleService
         assertEquals(true, consumer.isEnded());
     }
 
-    @Test
     public void TestSingleProducerMultipleConsumerQueue()
             throws Exception
     {
@@ -97,7 +99,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
 
-        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
         Thread producerThread = createProducerThread(producer, 0, 10, 100);
         producerThread.start();
 //        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde);
@@ -111,8 +113,8 @@ public class TestShuffleService
         long[] result = new long[10];
         long[] result2 = new long[10];
 
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
-        PageConsumer consumer2 = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
+        PageConsumer consumer2 = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
         Thread consumerThread2 = createConsumerThread(consumer2, result2, 100);
         consumerThread.start();
@@ -142,11 +144,11 @@ public class TestShuffleService
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer1 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        PageProducer producer2 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
         Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
@@ -184,14 +186,14 @@ public class TestShuffleService
         PagesSerde serde = new MockConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
 
         assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
         Thread consumerThread = createConsumerThread(consumer, result, 100);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer1 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        PageProducer producer2 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 20, 100);
         Thread producer2Thread = createProducerThread(producer2, 20, 40, 100);
@@ -228,13 +230,13 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
-        PageProducer producer1 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
-        PageProducer producer2 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
-        PageProducer producer3 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
-        PageProducer producer4 = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer1 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        PageProducer producer2 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        PageProducer producer3 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        PageProducer producer4 = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
 
         Thread producer1Thread = createProducerThread(producer1, 0, 1000, 0);
         Thread producer2Thread = createProducerThread(producer2, 1000, 2000, 0);
@@ -280,7 +282,7 @@ public class TestShuffleService
 
         PagesSerde serde = new MockConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
 
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
@@ -294,7 +296,7 @@ public class TestShuffleService
     {
         ExecutorService executorService = Executors.newFixedThreadPool(10);
         List<Future> results = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 1; i++) {
             Future future = executorService.submit(() -> {
                 try {
                     TestMultiProducerSingleConsumerQueue();
@@ -322,7 +324,7 @@ public class TestShuffleService
         String taskid = getTaskId();
         String bufferid = "0";
         PagesSerde serde = new MockConstantPagesSerde();
-        PageProducer producer = PageProducer.create(taskid, bufferid, serde, PageProducer.Type.BROADCAST);
+        PageProducer producer = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
         Thread producerThread = createProducerThread(producer, 0, 10, 100);
         producerThread.start();
         producerThread.join();
@@ -330,7 +332,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(taskid, bufferid, serde);
+        PageConsumer consumer = PageConsumer.create(taskid + "-" + bufferid, serde);
         Thread consumerThread = createConsumerThread(consumer, result, 0);
         consumerThread.start();
         consumerThread.join();
@@ -351,8 +353,6 @@ public class TestShuffleService
                     if (page == null) {
                         continue;
                     }
-                    count++;
-
                     count++;
                     int value = (int) page.getBlock(0).getLong(0, 0);
                     assertEquals(0, result[value], "received duplicate page");
@@ -390,6 +390,7 @@ public class TestShuffleService
                 try {
                     System.out.println("Producing pages from " + start + " to " + end + " with delay " + delay);
                     for (int i = start; i < end; i++) {
+                        System.out.println("sedning: " + i);
                         producer.send(getPage(i));
                         if (delay > 0) {
                             Thread.sleep(random.nextInt(delay));

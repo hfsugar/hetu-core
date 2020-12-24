@@ -18,7 +18,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
-import nova.hetu.executor.PageConsumer;
+import nova.hetu.shuffle.PageConsumer;
 
 import javax.annotation.Nullable;
 

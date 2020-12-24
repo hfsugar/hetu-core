@@ -16,7 +16,7 @@ package nova.hetu;
 
 import nova.hetu.cluster.Cluster;
 import nova.hetu.cluster.ClusterConfig;
-import nova.hetu.executor.ShuffleService;
+import nova.hetu.shuffle.ShuffleService;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;

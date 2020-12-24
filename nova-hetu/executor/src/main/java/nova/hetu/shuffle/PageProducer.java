@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.executor;
+package nova.hetu.shuffle;
 
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
@@ -53,7 +53,7 @@ public class PageProducer
      */
     public static PageProducer create(String producerId, PagesSerde serde, /** can we hide this? */Type type)
     {
-        Stream stream = ShuffleService.getStream(producerId, serde, type);
+        Stream stream = Stream.create(producerId, serde, type);
         return new PageProducer(stream, type);
     }
 

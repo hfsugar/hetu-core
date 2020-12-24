@@ -26,7 +26,7 @@ import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
-import nova.hetu.executor.PageProducer;
+import nova.hetu.shuffle.PageProducer;
 
 import java.util.ArrayList;
 import java.util.List;
