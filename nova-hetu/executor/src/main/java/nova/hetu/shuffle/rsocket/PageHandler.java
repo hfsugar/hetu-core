@@ -21,6 +21,7 @@ import io.rsocket.RSocket;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 import nova.hetu.shuffle.Stream;
+import org.apache.log4j.Logger;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -28,6 +29,7 @@ import reactor.core.scheduler.Schedulers;
 public class PageHandler
         implements SocketAcceptor
 {
+    private static Logger log = Logger.getLogger(PageHandler.class);
     @Override
     public Mono<RSocket> accept(ConnectionSetupPayload connectionSetupPayload, RSocket rSocket)
     {
@@ -36,9 +38,32 @@ public class PageHandler
             @Override
             public Flux<Payload> requestStream(Payload payload)
             {
-                String producerid = payload.getDataUtf8();
-                System.out.println("requesting stream: " + producerid);
-                Stream stream = Stream.get(producerid);
+                String producerId = payload.getDataUtf8();
+                log.info("requesting stream: " + producerId);
+                Stream stream = Stream.get(producerId);
+
+                /**
+                 * Wait until stream is created, another way is to simply return and let the client try again
+                 */
+                long maxWait = 1000;
+                long sleepInterval = 50;
+                while (stream == null && maxWait > 0) {
+                    stream = Stream.get(producerId);
+                    try {
+                        maxWait -= sleepInterval;
+                        Thread.sleep(sleepInterval);
+                    }
+                    catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    if (stream != null) {
+                        log.info("Got output stream after retry " + producerId);
+                    }
+                }
+
+                if (stream == null) {
+                    throw new RuntimeException("Error getting stream after retry");
+                }
                 return getFlux_Sink(stream);
             }
         });
@@ -52,7 +77,7 @@ public class PageHandler
                     try {
                         SerializedPage page = stream.take();
                         if (page != Stream.EOS) {
-                            System.out.println("sending: " + page);
+                            log.info("sending: " + page);
                             sink.next(DefaultPayload.create(page.getSliceArray(), extractMetadata(page)));
                         }
                         else {
@@ -61,14 +86,14 @@ public class PageHandler
                         }
                     }
                     catch (InterruptedException e) {
-                        e.printStackTrace();
+                        throw new RuntimeException(e);
                     }
                 }
             });
         })
-                .subscribeOn(Schedulers.immediate(), true)
-                .doOnRequest(value -> System.out.println("requested: " + value))
-                .doOnComplete(() -> System.out.println("completing the request"));
+                .subscribeOn(Schedulers.boundedElastic(), true)
+                .doOnRequest(value -> log.info("requested: " + value))
+                .doOnComplete(() -> log.info("completing the request"));
     }
 
     private byte[] extractMetadata(SerializedPage page)

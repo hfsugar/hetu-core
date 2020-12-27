@@ -23,10 +23,10 @@ import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockEncodingSerde;
 import io.prestosql.spi.block.LongArrayBlock;
 import nova.hetu.GrpcServer;
+import nova.hetu.RsServer;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.ProducerInfo;
-import nova.hetu.shuffle.rsocket.RsServer;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -89,6 +89,24 @@ public class TestShuffleService
         for (int i = 0; i < 10; i++) {
             assertEquals(i, result[i]);
         }
+        assertEquals(true, consumer.isEnded());
+    }
+
+    @Test
+    public void TestNoOutputProducer()
+            throws Exception
+    {
+        String taskid = getTaskId();
+        String bufferid = "0";
+        PagesSerde serde = new MockConstantPagesSerde();
+        PageProducer producer = PageProducer.create(taskid + "-" + bufferid, serde, PageProducer.Type.PARTITIONED);
+        producer.close();
+
+        long[] result = new long[0];
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde);
+        Thread consumerThread = createConsumerThread(consumer, result, 0);
+        consumerThread.start();
+        consumerThread.join();
         assertEquals(true, consumer.isEnded());
     }
 

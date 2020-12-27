@@ -25,6 +25,7 @@ import io.rsocket.core.RSocketConnector;
 import io.rsocket.frame.decoder.PayloadDecoder;
 import io.rsocket.transport.netty.client.TcpClientTransport;
 import io.rsocket.util.DefaultPayload;
+import org.apache.log4j.Logger;
 import reactor.core.publisher.Flux;
 
 import java.nio.ByteBuffer;
@@ -34,6 +35,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class RsShuffleClient
 {
+    private static Logger log = Logger.getLogger(RsShuffleClient.class);
+    
     private RsShuffleClient() {}
 
     public static Future getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
@@ -44,33 +47,29 @@ public class RsShuffleClient
                 .connect(TcpClientTransport.create(host, port))
                 .block();
 
-        System.out.println("sending request/stream");
+        log.info("*******************Creating flux for result " + producerId);
         Flux<Payload> flux = client.<Payload>requestStream(DefaultPayload.create(producerId.getBytes()))
                 .limitRate(1000) //dynamically calculate rate??
                 .doOnComplete(() -> {
-                    System.out.println("stream completed");
+                    log.info("*******************Closing flux for result " + producerId);
                     future.set(true);
                 });
 
-        System.out.println("subscribing .. ");
-
         flux.subscribe(payload -> {
-            System.out.println("getting page");
-
             ByteBuffer metadata = payload.getMetadata();
             byte marker = metadata.get();
             int count = metadata.getInt();
             int size = metadata.getInt();
             Slice slice = Slices.wrappedBuffer(payload.getData());
             SerializedPage page = new SerializedPage(slice, PageCodecMarker.MarkerSet.fromByteValue(marker), count, size);
-            System.out.println("getting page: " + page);
+            log.info("*******************getting page: " + page);
             try {
                 pageOutputBuffer.put(page);
             }
             catch (InterruptedException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
-            System.out.println(page);
+            log.info(page);
         });
 
         return future;

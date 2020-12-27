@@ -12,11 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.shuffle.rsocket;
+package nova.hetu;
 
 import io.rsocket.core.RSocketServer;
 import io.rsocket.frame.decoder.PayloadDecoder;
 import io.rsocket.transport.netty.server.TcpServerTransport;
+import nova.hetu.cluster.ClusterConfig;
+import nova.hetu.shuffle.rsocket.PageHandler;
 
 public class RsServer
 {
@@ -32,7 +34,7 @@ public class RsServer
     {
         RSocketServer.create(new PageHandler())
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
-                .bind(TcpServerTransport.create(7878))
+                .bind(TcpServerTransport.create(ClusterConfig.config.local.port))
                 .block()
                 .onClose();
 

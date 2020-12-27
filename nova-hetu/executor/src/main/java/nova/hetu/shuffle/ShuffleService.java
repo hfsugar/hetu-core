@@ -66,7 +66,7 @@ public class ShuffleService
                 Thread.sleep(sleepInterval);
             }
             catch (InterruptedException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
             if (stream != null) {
                 log.info("Got output stream after retry " + producerId);

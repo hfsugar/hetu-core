@@ -40,7 +40,7 @@ public class Stream
     static ConcurrentHashMap<String, Stream> streamMap = new ConcurrentHashMap<>();
 
     private final PagesSerde serde;
-    ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(100 /** shuffle.grpc.buffer_size_in_item */);
+    ArrayBlockingQueue<SerializedPage> queue = new ArrayBlockingQueue(1000 /** shuffle.grpc.buffer_size_in_item */);
     String id;
     boolean eos; // endOfStream
 

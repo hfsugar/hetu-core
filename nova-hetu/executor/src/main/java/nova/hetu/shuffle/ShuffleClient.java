@@ -21,6 +21,7 @@ import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import org.apache.log4j.Logger;
 
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -29,7 +30,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class ShuffleClient
 {
     public static ExecutorService executor = Executors.newFixedThreadPool(10);
-    public static ManagedChannel channel;
+    //WE NEED TO CACHE THE CHANNLES, ONE CHANNLE FOR EACH TARGET
+
+    public static HashMap<String, ManagedChannel> channels = new HashMap<>(); //key = "host - port"
 
     private static Logger log = Logger.getLogger(ShuffleClient.class);
 
@@ -37,17 +40,16 @@ public class ShuffleClient
 
     private static synchronized ManagedChannel getOrCreateChannel(String host, int port)
     {
-//        if (channel == null) {
-//            channel = ManagedChannelBuilder
-//                    .forAddress(host, port)
-//                    .usePlaintext(/** FIXME: TLS disabled */)
-//                    .build();
-//        }
-//        return channel;
-        return ManagedChannelBuilder
-                .forAddress(host, port)
-                .usePlaintext(/** FIXME: TLS disabled */)
-                .build();
+        String key = host + "-" + port;
+        ManagedChannel channel = channels.get(key);
+        if (channel == null) {
+            channel = ManagedChannelBuilder
+                    .forAddress(host, port)
+                    .usePlaintext(/** FIXME: TLS disabled */)
+                    .build();
+            channels.putIfAbsent(key, channel);
+        }
+        return channel;
     }
 
     /**
