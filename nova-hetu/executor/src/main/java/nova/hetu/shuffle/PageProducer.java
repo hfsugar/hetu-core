@@ -16,45 +16,20 @@ package nova.hetu.shuffle;
 
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
+import nova.hetu.shuffle.stream.Stream;
+import nova.hetu.shuffle.stream.StreamFactory;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class PageProducer
+        implements AutoCloseable
 {
     private final Stream stream;
-    private final Type type;
 
-    public enum Type
+    public PageProducer(String producerId, PagesSerde pagesSerde, Stream.Type type)
     {
-        PARTITIONED,
-        BROADCAST,
-        ARBITRARY,
-    }
-
-    PageProducer(Stream stream, Type type)
-    {
-        this.stream = stream;
-        this.type = type;
-    }
-
-    public static PageProducer create(String producerId, PagesSerde serde/** can we hide this? */)
-    {
-        return create(producerId, serde, Type.PARTITIONED);
-    }
-
-    /**
-     * Creates a Page Producer for sending pages to a producerId of a specific partition, when the output is not parititoned
-     * the default partitionid is 0
-     *
-     * @param producerId
-     * @param serde
-     * @param type
-     * @return
-     */
-    public static PageProducer create(String producerId, PagesSerde serde, /** can we hide this? */Type type)
-    {
-        Stream stream = Stream.create(producerId, serde, type);
-        return new PageProducer(stream, type);
+        this.stream = StreamFactory.getOrCreate(producerId, pagesSerde, type);
     }
 
     public void send(Page page)
@@ -63,11 +38,10 @@ public class PageProducer
         stream.write(page);
     }
 
-    public void addConsumers(List<Integer> newConsumers)
+    public void addConsumers(List<Integer> newConsumers, boolean noMoreConsumers)
+            throws InterruptedException
     {
-        if (type != Type.PARTITIONED) {
-            stream.addChannels(newConsumers);
-        }
+        stream.addChannels(newConsumers, noMoreConsumers);
     }
 
     public void close()
@@ -79,5 +53,10 @@ public class PageProducer
     public boolean isClosed()
     {
         return stream.isClosed();
+    }
+
+    public void onClosed(Consumer<Boolean> handler)
+    {
+        stream.onDestroyed(handler);
     }
 }

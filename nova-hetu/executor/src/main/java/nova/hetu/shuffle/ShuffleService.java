@@ -18,7 +18,11 @@ import com.google.protobuf.ByteString;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
+import nova.hetu.shuffle.stream.Stream;
+import nova.hetu.shuffle.stream.StreamManager;
 import org.apache.log4j.Logger;
+
+import static nova.hetu.shuffle.stream.Constants.EOS;
 
 /**
  * ####Shuffle Service
@@ -52,7 +56,7 @@ public class ShuffleService
         final String producerId = producer.getProducerId();
         log.info("====================== Get result for " + producerId);
         ServerCallStreamObserver<ShuffleOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ShuffleOuterClass.Page>) responseObserver;
-        Stream stream = Stream.get(producer.getProducerId());
+        Stream stream = StreamManager.get(producer.getProducerId());
 
         /**
          * Wait until stream is created, another way is to simply return and let the client try again
@@ -60,7 +64,7 @@ public class ShuffleService
         long maxWait = 1000;
         long sleepInterval = 50;
         while (stream == null && !serverCallStreamObserver.isCancelled() && maxWait > 0) {
-            stream = Stream.get(producerId);
+            stream = StreamManager.get(producerId);
             try {
                 maxWait -= sleepInterval;
                 Thread.sleep(sleepInterval);
@@ -80,14 +84,8 @@ public class ShuffleService
         SerializedPage page;
         try {
             while (!serverCallStreamObserver.isCancelled()) {
-                if (stream instanceof BroadcastStream) {
-                    int channelId = Integer.parseInt(producerId.split("-")[1]);
-                    page = ((BroadcastStream) stream).take(channelId);
-                }
-                else {
-                    page = stream.take();
-                }
-                if (page == Stream.EOS) {
+                page = stream.take();
+                if (page == EOS) {
                     break;
                 }
                 responseObserver.onNext(transform(page));
@@ -99,15 +97,10 @@ public class ShuffleService
             throw new RuntimeException(e);
         }
         finally {
-            Stream.destroy(stream);
+            stream.destroy();
             responseObserver.onCompleted();
             log.info("====================== Finished sending pages for " + producerId + " count:" + count);
         }
-    }
-
-    private static String toKey(String producerId, String bufferid)
-    {
-        return producerId + "/" + bufferid;
     }
 
     private ShuffleOuterClass.Page transform(SerializedPage page)

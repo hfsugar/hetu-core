@@ -114,9 +114,6 @@ public class TaskOutputOperator
     @Override
     public boolean isFinished()
     {
-        if (finished && isBlocked().isDone()) {
-            System.out.println("Operator " + operatorContext.getOperatorId() + " processed " + operatorContext.getInputPositions().getTotalCount() + " rows");
-        }
         return finished && isBlocked().isDone();
     }
 

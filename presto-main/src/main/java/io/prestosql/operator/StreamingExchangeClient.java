@@ -31,7 +31,7 @@ import static java.util.Objects.requireNonNull;
  * One client per location/split.
  * The client ensures the order of the page returned
  */
-public class GrpcExchangeClient
+public class StreamingExchangeClient
         implements ExchangeClient
 {
     private final PagesSerde pagesSerde;
@@ -39,7 +39,7 @@ public class GrpcExchangeClient
     private PageConsumer pageConsumer;
     private boolean noMoreLocation;
 
-    public GrpcExchangeClient(PagesSerde pagesSerde)
+    public StreamingExchangeClient(PagesSerde pagesSerde)
     {
         this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
     }
@@ -51,10 +51,12 @@ public class GrpcExchangeClient
     }
 
     @Override
-    public void addLocation(URI location)
+    public synchronized void addLocation(URI location)
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
-        pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
+        if (pageConsumer == null) {
+            pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
+        }
     }
 
     @Override

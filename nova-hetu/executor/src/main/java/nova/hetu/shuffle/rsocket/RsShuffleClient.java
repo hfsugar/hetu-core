@@ -36,7 +36,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class RsShuffleClient
 {
     private static Logger log = Logger.getLogger(RsShuffleClient.class);
-    
+
     private RsShuffleClient() {}
 
     public static Future getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
@@ -45,6 +45,7 @@ public class RsShuffleClient
         RSocket client = RSocketConnector.create()
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
                 .connect(TcpClientTransport.create(host, port))
+                .cache()
                 .block();
 
         log.info("*******************Creating flux for result " + producerId);
@@ -53,6 +54,16 @@ public class RsShuffleClient
                 .doOnComplete(() -> {
                     log.info("*******************Closing flux for result " + producerId);
                     future.set(true);
+                })
+                .doOnCancel(() -> {
+                    log.info(producerId + " CANCELLED");
+                })
+                .doOnCancel(() -> {
+                    future.set(true);
+                    log.info(producerId + " TERMINATED");
+                })
+                .doOnError(e -> {
+                    log.error(producerId + " Error getting pages: " + e.getMessage());
                 });
 
         flux.subscribe(payload -> {
@@ -60,9 +71,20 @@ public class RsShuffleClient
             byte marker = metadata.get();
             int count = metadata.getInt();
             int size = metadata.getInt();
-            Slice slice = Slices.wrappedBuffer(payload.getData());
-            SerializedPage page = new SerializedPage(slice, PageCodecMarker.MarkerSet.fromByteValue(marker), count, size);
-            log.info("*******************getting page: " + page);
+
+            SerializedPage page;
+            try {
+                Slice slice = Slices.wrappedBuffer(payload.getData());
+                page = new SerializedPage(slice, PageCodecMarker.MarkerSet.fromByteValue(marker), count, size);
+            }
+            catch (Exception e) {
+                log.error(producerId + "Error receiving page for " +
+                        " with marker: " + marker + ", count " + count +
+                        ", size " + size + ": " + e.getMessage());
+                return;
+            }
+
+//            log.info("*******************getting page: " + page);
             try {
                 pageOutputBuffer.put(page);
             }
@@ -78,7 +100,7 @@ public class RsShuffleClient
     public static void main(String[] args)
             throws InterruptedException, ExecutionException
     {
-        Future future = getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<SerializedPage>());
+        Future future = getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>());
         future.get();
     }
 }

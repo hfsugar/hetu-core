@@ -252,6 +252,7 @@ public class SqlTaskExecution
             }
 
             outputBuffer.addStateChangeListener(new CheckTaskCompletionOnBufferFinish(SqlTaskExecution.this));
+            producers.forEach(producer -> producer.onClosed(closed -> checkTaskCompletion()));
         }
     }
 
@@ -294,7 +295,12 @@ public class SqlTaskExecution
     {
         for (PageProducer pageProducer : producers) {
             List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
-            pageProducer.addConsumers(newOutputBuffers);
+            try {
+                pageProducer.addConsumers(newOutputBuffers, outputBuffers.isNoMoreBufferIds());
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -661,6 +667,14 @@ public class SqlTaskExecution
         outputBuffer.setNoMorePages();
         closeProducers(producers);
 
+        for (PageProducer producer : producers) {
+            // Waiting for all pages to be sent, do nothing
+            // FIXME: find a better way to handle this, this may wait a long time
+            if (!producer.isClosed()) {
+                return;
+            }
+        }
+
         // are there still pages in the output buffer
 //        if (!outputBuffer.isFinished()) {
 //            return;
@@ -675,17 +689,6 @@ public class SqlTaskExecution
         for (PageProducer producer : producers) {
             try {
                 producer.close();
-            }
-            catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        for (PageProducer producer : producers) {
-            try {
-                // Waiting for all pages to be sent, do nothing
-                // FIXME: find a better way to handle this
-                producer.isClosed();
             }
             catch (Exception e) {
                 throw new RuntimeException(e);
@@ -1131,7 +1134,6 @@ public class SqlTaskExecution
         {
             Driver driver;
             synchronized (this) {
-                System.out.println("Driver closed: " + getInfo());
                 closed = true;
                 driver = this.driver;
             }
@@ -1266,9 +1268,6 @@ public class SqlTaskExecution
 
         public synchronized void incrementRemainingDriver(Lifespan lifespan)
         {
-            if (this.taskContext.getTaskId().toString().contains(".2.0")) {
-                System.out.println("Increment Driver " + this.taskContext.getTaskId().toString());
-            }
             checkState(!isNoMoreDriverRunners(lifespan), "Cannot increment remainingDriver for Lifespan %s. NoMoreSplits is set.", lifespan);
             per(lifespan).remainingDriver++;
             overallRemainingDriver++;
@@ -1276,9 +1275,6 @@ public class SqlTaskExecution
 
         public synchronized void decrementRemainingDriver(Lifespan lifespan)
         {
-            if (this.taskContext.getTaskId().toString().contains(".2.0")) {
-                System.out.println("Decrement Driver " + this.taskContext.getTaskId().toString());
-            }
             checkState(per(lifespan).remainingDriver > 0, "Cannot decrement remainingDriver for Lifespan %s. Value is 0.", lifespan);
             per(lifespan).remainingDriver--;
             overallRemainingDriver--;

@@ -111,7 +111,6 @@ public class PrioritizedSplitRunner
 
     public void destroy()
     {
-        log.info("Driver destroyed " + getInfo());
         destroyed.set(true);
         try {
             split.close();

@@ -59,6 +59,7 @@ import io.prestosql.spiller.SpillSpaceTracker;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -153,7 +154,7 @@ public class TestSqlTaskExecution
                     TABLE_SCAN_NODE_ID,
                     outputBuffer,
                     Function.identity(),
-                    PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
+                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC));
             LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
                     ImmutableList.of(new DriverFactory(
                             0,
@@ -169,7 +170,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
-                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
+                    ImmutableList.of(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,
@@ -377,7 +378,7 @@ public class TestSqlTaskExecution
                     joinCNodeId,
                     outputBuffer,
                     Function.identity(),
-                    PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST));
+                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC));
             TestingCrossJoinOperatorFactory joinOperatorFactoryA = new TestingCrossJoinOperatorFactory(2, joinANodeId, buildStatesA);
             TestingCrossJoinOperatorFactory joinOperatorFactoryB = new TestingCrossJoinOperatorFactory(102, joinBNodeId, buildStatesB);
             TestingCrossJoinOperatorFactory joinOperatorFactoryC = new TestingCrossJoinOperatorFactory(3, joinCNodeId, buildStatesC);
@@ -422,7 +423,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
-                    ImmutableList.of(PageProducer.create(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), PageProducer.Type.BROADCAST)),
+                    ImmutableList.of(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,

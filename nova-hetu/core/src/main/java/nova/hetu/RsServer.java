@@ -18,7 +18,7 @@ import io.rsocket.core.RSocketServer;
 import io.rsocket.frame.decoder.PayloadDecoder;
 import io.rsocket.transport.netty.server.TcpServerTransport;
 import nova.hetu.cluster.ClusterConfig;
-import nova.hetu.shuffle.rsocket.PageHandler;
+import nova.hetu.shuffle.rsocket.RsShuffleService;
 
 public class RsServer
 {
@@ -32,7 +32,7 @@ public class RsServer
 
     public static void start()
     {
-        RSocketServer.create(new PageHandler())
+        RSocketServer.create(new RsShuffleService())
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
                 .bind(TcpServerTransport.create(ClusterConfig.config.local.port))
                 .block()

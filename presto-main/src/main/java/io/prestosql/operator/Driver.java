@@ -285,7 +285,6 @@ public class Driver
                 do {
                     ListenableFuture<?> future = processInternal(operationTimer);
                     if (!future.isDone()) {
-                        log.info("Driver blocked on " + this.driverContext.getTaskId().toString());
                         return updateDriverBlockedFuture(future);
                     }
                 }

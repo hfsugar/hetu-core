@@ -27,6 +27,7 @@ import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
 import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.stream.Stream;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ import static io.prestosql.execution.SqlTaskExecution.createSqlTaskExecution;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static java.util.Objects.requireNonNull;
+import static nova.hetu.shuffle.stream.Stream.Type.BASIC;
 
 public class SqlTaskExecutionFactory
 {
@@ -114,14 +116,14 @@ public class SqlTaskExecutionFactory
         int numPartitions = totalPartitions.orElse(1); // TODO: check when can this be empty
         if (type == PARTITIONED) {
             for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
-                producers.add(PageProducer.create(getProducerId(taskId.toString(), partition), pagesSerde, PageProducer.Type.PARTITIONED));
+                producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
             }
         }
         else if (type == BROADCAST) {
-            producers.add(PageProducer.create(taskId.toString(), pagesSerde, PageProducer.Type.BROADCAST));
+            producers.add(new PageProducer(taskId.toString(), pagesSerde, Stream.Type.BROADCAST));
         }
         else {
-            producers.add(PageProducer.create(getProducerId(taskId.toString(), 0), pagesSerde, PageProducer.Type.ARBITRARY));
+            producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
         }
 
         return producers;

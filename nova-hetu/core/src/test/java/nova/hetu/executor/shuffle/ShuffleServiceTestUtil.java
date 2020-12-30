@@ -12,22 +12,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.shuffle;
+package nova.hetu.executor.shuffle;
 
-import io.hetu.core.transport.execution.buffer.PagesSerde;
-import nova.hetu.shuffle.PageProducer.Type;
+import io.prestosql.spi.Page;
+import io.prestosql.spi.block.Block;
+import io.prestosql.spi.block.LongArrayBlock;
 
-import static nova.hetu.shuffle.PageProducer.Type.BROADCAST;
+import java.util.Optional;
 
-public class StreamFactory
+public class ShuffleServiceTestUtil
 {
-    public Stream create(String producerId, PagesSerde pagesSerde, Type type)
+    private ShuffleServiceTestUtil() {}
+
+    static Page getPage(int count)
     {
-        if (type == BROADCAST) {
-            return new BroadcastStream(producerId, pagesSerde);
-        }
-        else {
-            return new Stream(producerId, pagesSerde);
-        }
+        long[] values = new long[] {count};
+        Block block = new LongArrayBlock(1, Optional.empty(), values);
+        return new Page(block);
     }
 }
