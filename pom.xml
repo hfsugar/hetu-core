@@ -143,6 +143,7 @@
         <module>hetu-server-rpm</module>
         <module>hetu-common</module>
         <module>hetu-hazelcast</module>
+        <module>nova-hetu</module>
     </modules>
 
     <dependencyManagement>
@@ -1001,7 +1002,7 @@
             <dependency>
                 <groupId>com.google.errorprone</groupId>
                 <artifactId>error_prone_annotations</artifactId>
-                <version>2.3.2</version>
+                <version>2.3.4</version>
             </dependency>
 
             <dependency>
@@ -1364,7 +1365,7 @@
             <dependency>
                 <groupId>com.google.guava</groupId>
                 <artifactId>guava</artifactId>
-                <version>26.0-jre</version>
+                <version>30.0-jre</version>
             </dependency>
 
             <!--jetty manual upgrade of version start-->

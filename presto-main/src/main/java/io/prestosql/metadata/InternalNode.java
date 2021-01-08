@@ -36,6 +36,7 @@ public class InternalNode
     private final URI internalUri;
     private final NodeVersion nodeVersion;
     private final boolean coordinator;
+    private final int streamPort;
 
     @JsonCreator
     public InternalNode(
@@ -44,11 +45,23 @@ public class InternalNode
             @JsonProperty("nodeVersion") NodeVersion nodeVersion,
             @JsonProperty("coordinator") boolean coordinator)
     {
+        this(nodeIdentifier, internalUri, nodeVersion, coordinator, 0);
+    }
+
+    @JsonCreator
+    public InternalNode(
+            @JsonProperty("nodeIdentifier") String nodeIdentifier,
+            @JsonProperty("internalUri") URI internalUri,
+            @JsonProperty("nodeVersion") NodeVersion nodeVersion,
+            @JsonProperty("coordinator") boolean coordinator,
+            @JsonProperty("streamPort") int streamPort)
+    {
         nodeIdentifier = emptyToNull(nullToEmpty(nodeIdentifier).trim());
         this.nodeIdentifier = requireNonNull(nodeIdentifier, "nodeIdentifier is null or empty");
         this.internalUri = requireNonNull(internalUri, "internalUri is null");
         this.nodeVersion = requireNonNull(nodeVersion, "nodeVersion is null");
         this.coordinator = coordinator;
+        this.streamPort = streamPort;
     }
 
     @Override
@@ -103,6 +116,12 @@ public class InternalNode
     public NodeVersion getNodeVersion()
     {
         return nodeVersion;
+    }
+
+    @JsonProperty
+    public int getStreamPort()
+    {
+        return streamPort;
     }
 
     @Override

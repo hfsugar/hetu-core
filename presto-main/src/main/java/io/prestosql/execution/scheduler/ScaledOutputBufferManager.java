@@ -14,7 +14,6 @@
 package io.prestosql.execution.scheduler;
 
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 
 import javax.annotation.concurrent.GuardedBy;
 
@@ -41,7 +40,7 @@ public class ScaledOutputBufferManager
 
     @SuppressWarnings("ObjectEquality")
     @Override
-    public void addOutputBuffers(List<OutputBufferId> newBuffers, boolean noMoreBuffers)
+    public void addOutputBuffers(List<String> newBuffers, boolean noMoreBuffers)
     {
         OutputBuffers newOutputBuffers;
         synchronized (this) {
@@ -53,8 +52,8 @@ public class ScaledOutputBufferManager
 
             OutputBuffers originalOutputBuffers = outputBuffers;
 
-            for (OutputBufferId newBuffer : newBuffers) {
-                outputBuffers = outputBuffers.withBuffer(newBuffer, newBuffer.getId());
+            for (String newBufferId : newBuffers) {
+                outputBuffers = outputBuffers.withBuffer(newBufferId, Integer.valueOf(newBufferId));
             }
 
             if (noMoreBuffers) {

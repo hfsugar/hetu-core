@@ -27,6 +27,7 @@ import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffer;
+import io.prestosql.execution.buffer.OutputBuffers;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.execution.executor.TaskHandle;
 import io.prestosql.operator.Driver;
@@ -39,6 +40,7 @@ import io.prestosql.operator.StageExecutionDescriptor;
 import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.shuffle.PageProducer;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -112,6 +114,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
+    private final List<PageProducer> producers;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -145,6 +148,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<PageProducer> producers,
             List<TaskSource> sources,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
@@ -155,6 +159,7 @@ public class SqlTaskExecution
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
+                producers,
                 localExecutionPlan,
                 taskExecutor,
                 queryMonitor,
@@ -172,6 +177,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<PageProducer> producers,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -181,6 +187,7 @@ public class SqlTaskExecution
         this.taskId = taskStateMachine.getTaskId();
         this.taskContext = requireNonNull(taskContext, "taskContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+        this.producers = requireNonNull(producers, "outputStreams is null");
 
         this.taskExecutor = requireNonNull(taskExecutor, "driverExecutor is null");
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
@@ -245,6 +252,7 @@ public class SqlTaskExecution
             }
 
             outputBuffer.addStateChangeListener(new CheckTaskCompletionOnBufferFinish(SqlTaskExecution.this));
+            producers.forEach(producer -> producer.onClosed(closed -> checkTaskCompletion()));
         }
     }
 
@@ -281,6 +289,19 @@ public class SqlTaskExecution
     public TaskContext getTaskContext()
     {
         return taskContext;
+    }
+
+    public void updatePageProducers(OutputBuffers outputBuffers)
+    {
+        for (PageProducer pageProducer : producers) {
+            List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
+            try {
+                pageProducer.addConsumers(newOutputBuffers, outputBuffers.isNoMoreBufferIds());
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public void addSources(List<TaskSource> sources)
@@ -569,6 +590,9 @@ public class SqlTaskExecution
 
                         splitMonitor.splitCompletedEvent(taskId, getDriverStats());
                     }
+                    catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
 
                 @Override
@@ -582,6 +606,9 @@ public class SqlTaskExecution
 
                         // fire failed event with cause
                         splitMonitor.splitFailedEvent(taskId, getDriverStats(), cause);
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
 
@@ -638,14 +665,35 @@ public class SqlTaskExecution
 
         // no more output will be created
         outputBuffer.setNoMorePages();
+        closeProducers(producers);
+
+        for (PageProducer producer : producers) {
+            // Waiting for all pages to be sent, do nothing
+            // FIXME: find a better way to handle this, this may wait a long time
+            if (!producer.isClosed()) {
+                return;
+            }
+        }
 
         // are there still pages in the output buffer
-        if (!outputBuffer.isFinished()) {
-            return;
-        }
+//        if (!outputBuffer.isFinished()) {
+//            return;
+//        }
 
         // Cool! All done!
         taskStateMachine.finished();
+    }
+
+    private void closeProducers(List<PageProducer> producers)
+    {
+        for (PageProducer producer : producers) {
+            try {
+                producer.close();
+            }
+            catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override

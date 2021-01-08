@@ -1,0 +1,4 @@
+1. reactive streams are push based, it's the publisher notified the subscriber the arrival of the data
+2. reactive means reactive to the data
+3. push based could result in much better response time and lower latency
+4. onNext x 1..N [onComplete | onError]

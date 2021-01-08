@@ -18,8 +18,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.execution.StateMachine;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.context.AggregatedMemoryContext;
 import io.prestosql.memory.context.MemoryReservationHandler;
 import io.prestosql.memory.context.SimpleLocalMemoryContext;
@@ -61,6 +61,7 @@ import static io.prestosql.execution.buffer.OutputBuffers.createInitialEmptyOutp
 import static io.prestosql.execution.buffer.TestingPagesSerdeFactory.testingPagesSerde;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newRootAggregatedMemoryContext;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
+import static io.prestosql.metadata.MetadataManager.createTestMetadataManager;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
@@ -72,14 +73,15 @@ import static org.testng.Assert.fail;
 public class TestBroadcastOutputBuffer
 {
     private static final PagesSerde PAGES_SERDE = testingPagesSerde();
-    private static final String TASK_INSTANCE_ID = "task-instance-id";
+    private static final java.lang.String TASK_INSTANCE_ID = "task-instance-id";
 
     private static final ImmutableList<BigintType> TYPES = ImmutableList.of(BIGINT);
-    private static final OutputBufferId FIRST = new OutputBufferId(0);
-    private static final OutputBufferId SECOND = new OutputBufferId(1);
-    private static final OutputBufferId THIRD = new OutputBufferId(2);
+    private static final String FIRST = String.valueOf(0);
+    private static final String SECOND = String.valueOf(1);
+    private static final String THIRD = String.valueOf(2);
 
     private ScheduledExecutorService stateNotificationExecutor;
+    private final PagesSerde serde = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false).createPagesSerde();
 
     @BeforeClass
     public void setUp()
@@ -127,7 +129,7 @@ public class TestBroadcastOutputBuffer
         outputBuffers = createInitialEmptyOutputBuffers(BROADCAST).withBuffer(FIRST, BROADCAST_PARTITION_ID);
 
         // add a queue
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
         assertQueueState(buffer, FIRST, 3, 0);
 
         // get the three elements
@@ -162,7 +164,7 @@ public class TestBroadcastOutputBuffer
         //
         // add another buffer and verify it sees all pages
         outputBuffers = outputBuffers.withBuffer(SECOND, BROADCAST_PARTITION_ID);
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
         assertQueueState(buffer, SECOND, 11, 0);
         assertBufferResultEquals(TYPES, getBufferResult(buffer, SECOND, 0, sizeOfPages(10), NO_WAIT), bufferResult(0, createPage(0),
                 createPage(1),
@@ -183,7 +185,7 @@ public class TestBroadcastOutputBuffer
         //
         // tell shared buffer there will be no more queues
         outputBuffers = outputBuffers.withNoMoreBufferIds();
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
 
         // queues consumed the first three pages, so they should be dropped now and the blocked page future from above should be done
         assertQueueState(buffer, FIRST, 8, 3);
@@ -273,7 +275,7 @@ public class TestBroadcastOutputBuffer
         outputBuffers = createInitialEmptyOutputBuffers(BROADCAST).withBuffer(FIRST, BROADCAST_PARTITION_ID);
 
         // add a queue
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
         assertQueueState(buffer, FIRST, 3, 0);
 
         // get the three elements
@@ -369,7 +371,7 @@ public class TestBroadcastOutputBuffer
             buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST)
                     .withBuffer(FIRST, BROADCAST_PARTITION_ID)
                     .withBuffer(SECOND, BROADCAST_PARTITION_ID)
-                    .withNoMoreBufferIds());
+                    .withNoMoreBufferIds(), serde);
             fail("Expected IllegalStateException from addQueue after noMoreQueues has been called");
         }
         catch (IllegalArgumentException ignored) {
@@ -397,15 +399,15 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // tell buffer no more queues will be added
-        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds());
+        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds(), serde);
         assertTrue(buffer.isFinished());
 
         // set no more queues a second time to assure that we don't get an exception or such
-        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds());
+        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds(), serde);
         assertTrue(buffer.isFinished());
 
         // set no more queues a third time to assure that we don't get an exception or such
-        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds());
+        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds(), serde);
         assertTrue(buffer.isFinished());
     }
 
@@ -462,7 +464,7 @@ public class TestBroadcastOutputBuffer
         buffer.abort(FIRST);
 
         // set final buffers to a set that does not contain the buffer, which will fail
-        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds());
+        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds(), serde);
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "No more buffers already set")
@@ -886,7 +888,7 @@ public class TestBroadcastOutputBuffer
 
         // add a buffer
         outputBuffers = outputBuffers.withBuffer(SECOND, BROADCAST_PARTITION_ID);
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
 
         // attempt to get page, and verify we are blocked
         future = buffer.get(FIRST, 1, sizeOfPages(10));
@@ -896,7 +898,7 @@ public class TestBroadcastOutputBuffer
 
         // set no more buffers
         outputBuffers = outputBuffers.withNoMoreBufferIds();
-        buffer.setOutputBuffers(outputBuffers);
+        buffer.setOutputBuffers(outputBuffers, serde);
 
         // attempt to get page, and verify we are blocked
         future = buffer.get(FIRST, 1, sizeOfPages(10));
@@ -1051,34 +1053,6 @@ public class TestBroadcastOutputBuffer
         addPage(buffer, page);
     }
 
-    private static class MockMemoryReservationHandler
-            implements MemoryReservationHandler
-    {
-        private ListenableFuture<?> blockedFuture;
-
-        public MockMemoryReservationHandler(ListenableFuture<?> blockedFuture)
-        {
-            this.blockedFuture = requireNonNull(blockedFuture, "blockedFuture is null");
-        }
-
-        @Override
-        public ListenableFuture<?> reserveMemory(String allocationTag, long delta)
-        {
-            return blockedFuture;
-        }
-
-        @Override
-        public boolean tryReserveMemory(String allocationTag, long delta)
-        {
-            return true;
-        }
-
-        public void updateBlockedFuture(ListenableFuture<?> blockedFuture)
-        {
-            this.blockedFuture = requireNonNull(blockedFuture);
-        }
-    }
-
     private BroadcastOutputBuffer createBroadcastBuffer(OutputBuffers outputBuffers, DataSize dataSize, AggregatedMemoryContext memoryContext, Executor notificationExecutor)
     {
         BroadcastOutputBuffer buffer = new BroadcastOutputBuffer(
@@ -1086,8 +1060,20 @@ public class TestBroadcastOutputBuffer
                 new StateMachine<>("bufferState", stateNotificationExecutor, OPEN, TERMINAL_BUFFER_STATES),
                 dataSize,
                 () -> memoryContext.newLocalMemoryContext("test"),
-                notificationExecutor);
-        buffer.setOutputBuffers(outputBuffers);
+                notificationExecutor, serde);
+        buffer.setOutputBuffers(outputBuffers, serde);
+        return buffer;
+    }
+
+    private BroadcastOutputBuffer createBroadcastBuffer(OutputBuffers outputBuffers, DataSize dataSize)
+    {
+        BroadcastOutputBuffer buffer = new BroadcastOutputBuffer(
+                TASK_INSTANCE_ID,
+                new StateMachine<>("bufferState", stateNotificationExecutor, OPEN, TERMINAL_BUFFER_STATES),
+                dataSize,
+                () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
+                stateNotificationExecutor, serde);
+        buffer.setOutputBuffers(outputBuffers, serde);
         return buffer;
     }
 
@@ -1140,16 +1126,32 @@ public class TestBroadcastOutputBuffer
         assertEquals(memoryManager.getBufferedBytes(), 0);
     }
 
-    private BroadcastOutputBuffer createBroadcastBuffer(OutputBuffers outputBuffers, DataSize dataSize)
+    private static class MockMemoryReservationHandler
+            implements MemoryReservationHandler
     {
-        BroadcastOutputBuffer buffer = new BroadcastOutputBuffer(
-                TASK_INSTANCE_ID,
-                new StateMachine<>("bufferState", stateNotificationExecutor, OPEN, TERMINAL_BUFFER_STATES),
-                dataSize,
-                () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                stateNotificationExecutor);
-        buffer.setOutputBuffers(outputBuffers);
-        return buffer;
+        private ListenableFuture<?> blockedFuture;
+
+        public MockMemoryReservationHandler(ListenableFuture<?> blockedFuture)
+        {
+            this.blockedFuture = requireNonNull(blockedFuture, "blockedFuture is null");
+        }
+
+        @Override
+        public ListenableFuture<?> reserveMemory(java.lang.String allocationTag, long delta)
+        {
+            return blockedFuture;
+        }
+
+        @Override
+        public boolean tryReserveMemory(java.lang.String allocationTag, long delta)
+        {
+            return true;
+        }
+
+        public void updateBlockedFuture(ListenableFuture<?> blockedFuture)
+        {
+            this.blockedFuture = requireNonNull(blockedFuture);
+        }
     }
 
     private static BufferResult bufferResult(long token, Page firstPage, Page... otherPages)
