@@ -15,6 +15,7 @@
 package io.prestosql.execution.ddl;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import io.prestosql.execution.QueryStateMachine;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.security.AccessControl;

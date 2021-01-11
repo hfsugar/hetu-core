@@ -76,7 +76,7 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
-        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers.getType());
+        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers);
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -110,12 +110,13 @@ public class SqlTaskExecutionFactory
                 splitMonitor);
     }
 
-    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers.BufferType type)
+    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers outputBuffers)
     {
+        OutputBuffers.BufferType type = outputBuffers.getType();
         List<PageProducer> producers = new ArrayList<>();
-        int numPartitions = totalPartitions.orElse(1); // TODO: check when can this be empty
+        System.out.println(taskId.toString() + " CreateProducers: " + totalPartitions.orElse(-1));
         if (type == PARTITIONED) {
-            for (int partition = 0; partition < numPartitions; partition++) { //partition id is 0 based
+            for (String partition : outputBuffers.getBuffers().keySet()) { //partition id is 0 based
                 producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
             }
         }

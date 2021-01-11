@@ -107,7 +107,7 @@
         <module>presto-jdbc</module>
         <module>presto-cli</module>
         <module>presto-benchmark-driver</module>
-<!--        <module>presto-docs</module>-->
+        <!--        <module>presto-docs</module>-->
         <module>presto-verifier</module>
         <module>presto-testing-server-launcher</module>
         <module>presto-plugin-toolkit</module>
@@ -562,6 +562,24 @@
             <dependency>
                 <groupId>io.hetu.core</groupId>
                 <artifactId>hetu-transport</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.hetu.core</groupId>
+                <artifactId>executor</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.hetu.core</groupId>
+                <artifactId>core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.hetu.core</groupId>
+                <artifactId>service-mgr</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -1564,9 +1582,9 @@
                     <version>2.3</version>
                     <configuration>
                         <validHeaders>
-                            <item> ${air.main.basedir}/src/main/resource/license/license-header.txt</item>
-                            <item> ${air.main.basedir}/src/main/resource/license/license-header-alternate-2010.txt</item>
-                            <item> ${air.main.basedir}/src/main/resource/license/license-header-alternate-2012.txt</item>
+                            <item>${air.main.basedir}/src/main/resource/license/license-header.txt</item>
+                            <item>${air.main.basedir}/src/main/resource/license/license-header-alternate-2010.txt</item>
+                            <item>${air.main.basedir}/src/main/resource/license/license-header-alternate-2012.txt</item>
                         </validHeaders>
                     </configuration>
                 </plugin>

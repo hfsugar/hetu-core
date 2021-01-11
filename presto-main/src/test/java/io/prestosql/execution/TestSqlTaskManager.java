@@ -35,6 +35,7 @@ import io.prestosql.operator.HttpExchangeClient;
 import io.prestosql.spi.QueryId;
 import io.prestosql.spiller.LocalSpillManager;
 import io.prestosql.spiller.NodeSpillConfig;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
@@ -243,6 +244,7 @@ public class TestSqlTaskManager
                 taskManagementExecutor,
                 config,
                 new NodeMemoryConfig(),
+                new ShuffleServiceConfig(),
                 localSpillManager,
                 new NodeSpillConfig(),
                 new TestingGcMonitor(),

@@ -54,14 +54,14 @@ public class InternalNode
             @JsonProperty("internalUri") URI internalUri,
             @JsonProperty("nodeVersion") NodeVersion nodeVersion,
             @JsonProperty("coordinator") boolean coordinator,
-            @JsonProperty("streamPort") int streamPort)
+            @JsonProperty("shuffleServicePort") int shuffleServicePort)
     {
         nodeIdentifier = emptyToNull(nullToEmpty(nodeIdentifier).trim());
         this.nodeIdentifier = requireNonNull(nodeIdentifier, "nodeIdentifier is null or empty");
         this.internalUri = requireNonNull(internalUri, "internalUri is null");
         this.nodeVersion = requireNonNull(nodeVersion, "nodeVersion is null");
         this.coordinator = coordinator;
-        this.streamPort = streamPort;
+        this.streamPort = shuffleServicePort;
     }
 
     @Override

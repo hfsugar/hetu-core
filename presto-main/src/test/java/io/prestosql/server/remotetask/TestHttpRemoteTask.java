@@ -493,7 +493,7 @@ public class TestHttpRemoteTask
                     initialTaskStatus.getRevocableMemoryReservation(),
                     initialTaskStatus.getFullGcCount(),
                     initialTaskStatus.getFullGcTime(),
-                    initialTaskStatus.getStreamPort());
+                    initialTaskStatus.getShuffleServicePort());
         }
     }
 }

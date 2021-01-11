@@ -291,7 +291,7 @@ public class SqlQueryScheduler
         Set<URI> bufferLocations = tasks.stream()
                 .map(task -> {
                     URI location = task.getTaskStatus().getSelf();
-                    return uriBuilderFrom(location).port(task.getTaskStatus().getStreamPort()).build();
+                    return uriBuilderFrom(location).port(task.getTaskStatus().getShuffleServicePort()).build();
                 })
                 .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
                 .collect(toImmutableSet());

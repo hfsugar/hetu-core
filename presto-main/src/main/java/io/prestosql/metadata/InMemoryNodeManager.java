@@ -20,7 +20,6 @@ import com.google.common.collect.Multimaps;
 import com.google.common.collect.SetMultimap;
 import io.prestosql.client.NodeVersion;
 import io.prestosql.connector.CatalogName;
-import nova.hetu.cluster.ClusterConfig;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.inject.Inject;
@@ -50,7 +49,7 @@ public class InMemoryNodeManager
 
     public InMemoryNodeManager(URI localUri)
     {
-        localNode = new InternalNode("local", localUri, NodeVersion.UNKNOWN, false, ClusterConfig.config.local.port);
+        localNode = new InternalNode("local", localUri, NodeVersion.UNKNOWN, false);
     }
 
     public void addCurrentNodeConnector(CatalogName catalogName)
