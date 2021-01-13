@@ -24,6 +24,10 @@ import nova.hetu.shuffle.ProducerInfo;
 import javax.annotation.Nullable;
 
 import java.net.URI;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.Objects.requireNonNull;
 
@@ -36,7 +40,9 @@ public class StreamingExchangeClient
 {
     private final PagesSerde pagesSerde;
 
-    private PageConsumer pageConsumer;
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final ConcurrentHashMap<URI, PageConsumer> pageConsumers = new ConcurrentHashMap<>();
+    private final Queue<PageConsumer> activePageConsumers = new LinkedList<>();
     private boolean noMoreLocation;
 
     public StreamingExchangeClient(PagesSerde pagesSerde)
@@ -54,8 +60,10 @@ public class StreamingExchangeClient
     public synchronized void addLocation(URI location)
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
-        if (pageConsumer == null) {
-            pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
+        if (!pageConsumers.containsKey(location)) {
+            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
+            pageConsumers.put(location, pageConsumer);
+            activePageConsumers.offer(pageConsumer);
         }
     }
 
@@ -67,37 +75,44 @@ public class StreamingExchangeClient
 
     @Nullable
     @Override
-    public Page pollPage()
+    public synchronized Page pollPage()
     {
-        if (pageConsumer == null) {
-            return null;
+        Page page = null;
+        int numConsumers = activePageConsumers.size();
+        while (page == null && numConsumers > 0) {
+            PageConsumer pageConsumer = activePageConsumers.poll();
+            if (!pageConsumer.isEnded()) {
+                page = pageConsumer.poll();
+                activePageConsumers.offer(pageConsumer);
+            }
+            numConsumers--;
         }
-        return pageConsumer.poll();
+
+        return page;
     }
 
     @Override
     public boolean isFinished()
     {
-        return pageConsumer != null && pageConsumer.isEnded();
+        return noMoreLocation && activePageConsumers.isEmpty();
     }
 
     @Override
     public boolean isClosed()
     {
         /** shouldn't need to check if pageConsumer is null if this is only called after {@link #addLocation(URI)} is invoked */
-        return pageConsumer != null && pageConsumer.isEnded();
+        return closed.get() || isFinished();
     }
 
     @Override
     public ListenableFuture<?> isBlocked()
     {
         return Futures.immediateFuture(true);
-//        if (isClosed()) {
-//            return Futures.immediateFuture(true);
-//        }
-//        return SettableFuture.create();
     }
 
     @Override
-    public void close() {}
+    public void close()
+    {
+        closed.compareAndSet(false, true);
+    }
 }

@@ -39,7 +39,6 @@ import io.prestosql.operator.TaskContext;
 import io.prestosql.operator.TaskStats;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nova.hetu.cluster.ClusterConfig;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -89,6 +88,7 @@ public class SqlTask
     private final AtomicReference<TaskHolder> taskHolderReference = new AtomicReference<>(new TaskHolder());
     private final AtomicBoolean needsPlan = new AtomicBoolean(true);
     private final Metadata metadata;
+    private final int shuffleServicePort;
 
     public static SqlTask createSqlTask(
             TaskId taskId,
@@ -100,9 +100,10 @@ public class SqlTask
             Function<SqlTask, ?> onDone,
             DataSize maxBufferSize,
             CounterStat failedTasks,
-            Metadata metadata)
+            Metadata metadata,
+            int shuffleServicePort)
     {
-        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, metadata);
+        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, metadata, shuffleServicePort);
         sqlTask.initialize(onDone, failedTasks);
         return sqlTask;
     }
@@ -110,12 +111,13 @@ public class SqlTask
     private SqlTask(
             TaskId taskId,
             URI location,
-            java.lang.String nodeId,
+            String nodeId,
             QueryContext queryContext,
             SqlTaskExecutionFactory sqlTaskExecutionFactory,
             ExecutorService taskNotificationExecutor,
             DataSize maxBufferSize,
-            Metadata metadata)
+            Metadata metadata,
+            int shuffleServicePort)
     {
         this.taskId = requireNonNull(taskId, "taskId is null");
         this.taskInstanceId = UUID.randomUUID().toString();
@@ -124,6 +126,7 @@ public class SqlTask
         this.queryContext = requireNonNull(queryContext, "queryContext is null");
         this.sqlTaskExecutionFactory = requireNonNull(sqlTaskExecutionFactory, "sqlTaskExecutionFactory is null");
         this.metadata = requireNonNull(metadata, "requireNonNull is null");
+        this.shuffleServicePort = shuffleServicePort;
         requireNonNull(taskNotificationExecutor, "taskNotificationExecutor is null");
         requireNonNull(maxBufferSize, "maxBufferSize is null");
 
@@ -297,7 +300,7 @@ public class SqlTask
                 revocableMemoryReservation,
                 fullGcCount,
                 fullGcTime,
-                ClusterConfig.config.local.port);
+                shuffleServicePort);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)
@@ -385,6 +388,7 @@ public class SqlTask
             // output buffer must be established before drivers are created (e.g.
             // a VALUES query).
 
+            log.info("Task: " + this.taskId.toString() + ", OutputBuffers: " + outputBuffers.getType() + ", " + outputBuffers.getBuffers() + ", no more buffers: " + outputBuffers.isNoMoreBufferIds());
             outputBuffer.setOutputBuffers(outputBuffers, serde);
 
             // assure the task execution is only created once

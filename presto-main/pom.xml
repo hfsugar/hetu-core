@@ -510,7 +510,6 @@
         <dependency>
             <groupId>io.hetu.core</groupId>
             <artifactId>executor</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
             <scope>compile</scope>
             <exclusions>
                 <exclusion>
@@ -522,19 +521,6 @@
         <dependency>
             <groupId>io.hetu.core</groupId>
             <artifactId>core</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
-            <scope>compile</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>log4j</groupId>
-                    <artifactId>log4j</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>io.hetu.core</groupId>
-            <artifactId>service-mgr</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
             <scope>compile</scope>
             <exclusions>
                 <exclusion>

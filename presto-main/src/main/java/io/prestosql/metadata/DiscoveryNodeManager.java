@@ -31,7 +31,6 @@ import io.prestosql.connector.CatalogName;
 import io.prestosql.connector.system.GlobalSystemConnector;
 import io.prestosql.failuredetector.FailureDetector;
 import io.prestosql.server.InternalCommunicationConfig;
-import nova.hetu.cluster.ClusterConfig;
 import org.weakref.jmx.Managed;
 
 import javax.annotation.PostConstruct;
@@ -132,7 +131,7 @@ public final class DiscoveryNodeManager
             URI uri = getHttpUri(service, httpsRequired);
             NodeVersion nodeVersion = getNodeVersion(service);
             if (uri != null && nodeVersion != null) {
-                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, isCoordinator(service), ClusterConfig.config.local.port);
+                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, isCoordinator(service), getShuffleServicePort(service));
 
                 if (node.getNodeIdentifier().equals(currentNodeId)) {
                     checkState(
@@ -241,7 +240,7 @@ public final class DiscoveryNodeManager
             NodeVersion nodeVersion = getNodeVersion(service);
             boolean coordinator = isCoordinator(service);
             if (uri != null && nodeVersion != null) {
-                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, coordinator, ClusterConfig.config.local.port);
+                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, coordinator, getShuffleServicePort(service));
                 NodeState nodeState = getNodeState(node);
 
                 switch (nodeState) {
@@ -437,5 +436,14 @@ public final class DiscoveryNodeManager
     private static boolean isCoordinator(ServiceDescriptor service)
     {
         return Boolean.parseBoolean(service.getProperties().get("coordinator"));
+    }
+
+    private static int getShuffleServicePort(ServiceDescriptor serviceDescriptor)
+    {
+        String shuffleServicePortValue = serviceDescriptor.getProperties().get("shuffleServicePort");
+        if (shuffleServicePortValue == null) {
+            throw new IllegalArgumentException("Shuffle service port is not configured");
+        }
+        return Integer.parseInt(shuffleServicePortValue);
     }
 }

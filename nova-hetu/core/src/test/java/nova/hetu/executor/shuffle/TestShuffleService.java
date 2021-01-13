@@ -25,6 +25,7 @@ import io.prestosql.spi.block.BlockEncodingSerde;
 import io.prestosql.spi.block.LongArrayBlock;
 import nova.hetu.GrpcServer;
 import nova.hetu.RsServer;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.ProducerInfo;
@@ -55,7 +56,7 @@ public class TestShuffleService
     public void setup()
             throws InterruptedException
     {
-        RsServer.start();
+        RsServer.start(new ShuffleServiceConfig());
         GrpcServer.start();
     }
 

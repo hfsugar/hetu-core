@@ -17,7 +17,6 @@ package nova.hetu;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.frame.decoder.PayloadDecoder;
 import io.rsocket.transport.netty.server.TcpServerTransport;
-import nova.hetu.cluster.ClusterConfig;
 import nova.hetu.shuffle.rsocket.RsShuffleService;
 
 public class RsServer
@@ -27,14 +26,14 @@ public class RsServer
     public static void main(String[] args)
             throws InterruptedException
     {
-        start();
+        start(new ShuffleServiceConfig());
     }
 
-    public static void start()
+    public static void start(ShuffleServiceConfig shuffleServiceConfig)
     {
         RSocketServer.create(new RsShuffleService())
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
-                .bind(TcpServerTransport.create(ClusterConfig.config.local.port))
+                .bind(TcpServerTransport.create(shuffleServiceConfig.getPort()))
                 .block()
                 .onClose();
 

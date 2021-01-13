@@ -45,6 +45,7 @@ import io.prestosql.spiller.LocalSpillManager;
 import io.prestosql.spiller.NodeSpillConfig;
 import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.PlanFragment;
+import nova.hetu.ShuffleServiceConfig;
 import org.joda.time.DateTime;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
@@ -119,6 +120,7 @@ public class SqlTaskManager
             TaskManagementExecutor taskManagementExecutor,
             TaskManagerConfig config,
             NodeMemoryConfig nodeMemoryConfig,
+            ShuffleServiceConfig shuffleServiceConfig,
             LocalSpillManager localSpillManager,
             NodeSpillConfig nodeSpillConfig,
             GcMonitor gcMonitor,
@@ -161,7 +163,8 @@ public class SqlTaskManager
                         },
                         maxBufferSize,
                         failedTasks,
-                        metadata)));
+                        metadata,
+                        shuffleServiceConfig.getPort())));
     }
 
     private QueryContext createQueryContext(

@@ -59,6 +59,7 @@ import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.utils.HetuConfig;
 import nova.hetu.RsServer;
+import nova.hetu.ShuffleServiceConfig;
 import org.weakref.jmx.guice.MBeanModule;
 
 import java.io.IOException;
@@ -127,13 +128,13 @@ public class PrestoServer
 
         modules.addAll(getAdditionalModules());
 
-        //GrpcServer.start();
-        RsServer.start();
-
         Bootstrap app = new Bootstrap(modules.build());
 
         try {
             Injector injector = app.strictConfig().initialize();
+
+            //GrpcServer.start();
+            RsServer.start(injector.getInstance(ShuffleServiceConfig.class));
 
             logLocation(log, "Working directory", Paths.get("."));
             logLocation(log, "Etc directory", Paths.get("etc"));
