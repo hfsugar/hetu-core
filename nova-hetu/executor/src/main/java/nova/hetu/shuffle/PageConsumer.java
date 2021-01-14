@@ -19,14 +19,18 @@ import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 import nova.hetu.shuffle.rsocket.RsShuffleClient;
 
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static java.util.Objects.requireNonNull;
 
 public class PageConsumer
 {
     LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
     PagesSerde serde;
-    Future future;
+    private final AtomicBoolean shuffleClientFinished = new AtomicBoolean();
+    private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
@@ -38,12 +42,17 @@ public class PageConsumer
         this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
 
-        future = RsShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer);
+        // TODO: pass in an event listener to handler success and failure events
+        RsShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
 //        future = ShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer);
     }
 
     public Page poll()
     {
+        Throwable t = failure.get();
+        if (t != null) {
+            throw new RuntimeException(t);
+        }
         SerializedPage page = pageOutputBuffer.poll();
         if (page == null) {
             return null;
@@ -53,6 +62,25 @@ public class PageConsumer
 
     public boolean isEnded()
     {
-        return pageOutputBuffer.isEmpty() && future.isDone();
+        return pageOutputBuffer.isEmpty() && shuffleClientFinished.get();
+    }
+
+    private class ShuffleClientCallbackImpl
+            implements ShuffleClientCallback
+    {
+        @Override
+        public void clientFinished()
+        {
+            shuffleClientFinished.compareAndSet(false, true);
+        }
+
+        @Override
+        public void clientFailed(Throwable cause)
+        {
+            requireNonNull(cause, "cause is null");
+            if (!isEnded()) {
+                failure.compareAndSet(null, cause);
+            }
+        }
     }
 }

@@ -75,6 +75,7 @@ import static io.prestosql.SystemSessionProperties.getSplitConcurrencyAdjustment
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.ADDING_SPLITS;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.FINISHED;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.NO_MORE_SPLITS;
+import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static io.prestosql.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -293,10 +294,18 @@ public class SqlTaskExecution
 
     public void updatePageProducers(OutputBuffers outputBuffers)
     {
+        // Partitioned outputBuffers are finalized in task creation
+        if (outputBuffers.getType() == PARTITIONED) {
+            return;
+        }
+
         for (PageProducer pageProducer : producers) {
             List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
             try {
-                pageProducer.addConsumers(newOutputBuffers, outputBuffers.isNoMoreBufferIds());
+                // TODO: keep track of noMoreBuffers here instead of in the stream
+                if (!pageProducer.isClosed()) {
+                    pageProducer.addConsumers(newOutputBuffers, outputBuffers.isNoMoreBufferIds());
+                }
             }
             catch (InterruptedException e) {
                 throw new RuntimeException(e);
@@ -668,8 +677,7 @@ public class SqlTaskExecution
         closeProducers(producers);
 
         for (PageProducer producer : producers) {
-            // Waiting for all pages to be sent, do nothing
-            // FIXME: find a better way to handle this, this may wait a long time
+            // There are still pages buffered in producers, do nothing
             if (!producer.isClosed()) {
                 return;
             }

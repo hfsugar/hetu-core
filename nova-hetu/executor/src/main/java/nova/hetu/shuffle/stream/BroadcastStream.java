@@ -19,10 +19,12 @@ import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 import org.apache.log4j.Logger;
 
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -35,10 +37,11 @@ import static nova.hetu.shuffle.stream.PageSplitterUtil.splitPage;
 public class BroadcastStream
         implements Stream
 {
-    private final BlockingQueue<SerializedPage> initialPages = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
-    private final Map<Integer, BlockingQueue<SerializedPage>> channels = new HashMap<>();
-
     private static final Logger log = Logger.getLogger(BroadcastStream.class);
+
+    private final BlockingQueue<SerializedPage> pendingPages = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
+    private final Set<Integer> addedChannels = new HashSet<>();
+    private final Map<Integer, BlockingQueue<SerializedPage>> channels = new ConcurrentHashMap<>();
 
     private final PagesSerde serde;
     private final String id;
@@ -81,16 +84,15 @@ public class BroadcastStream
 
         if (!channelsAdded) {
             for (SerializedPage splittedPage : serializedPages) {
-                initialPages.put(splittedPage);
-                log.info("Stream " + id + " write initial pages " + page);
+                pendingPages.put(splittedPage);
+//                log.info("Stream " + id + " write initial pages " + page);
             }
-            return;
         }
 
         for (BlockingQueue<SerializedPage> channel : channels.values()) {
             for (SerializedPage splittedPage : serializedPages) {
                 channel.put(splittedPage);
-                log.info("Stream " + id + " write channel " + channel.toString() + " page " + page);
+//                log.info("Stream " + id + " write channel " + channel.toString() + " page " + page);
             }
         }
     }
@@ -98,22 +100,36 @@ public class BroadcastStream
     @Override
     public void addChannels(List<Integer> channelIds, boolean noMoreChannels)
     {
-        for (Integer channelId : channelIds) {
-            if (channels.containsKey(channelId)) {
-                continue;
-            }
+        if (channelsAdded) {
+            return;
+        }
 
+        List<Integer> newChannels = channelIds.stream().filter(channelId -> !addedChannels.contains(channelId)).collect(Collectors.toList());
+        if (newChannels.isEmpty()) {
+            // streams all finish but haven't received noMoreChannels
+            // so we need to destroy the main stream here
+            if (noMoreChannels) {
+                channelsAdded = true;
+                if (channels.isEmpty()) {
+                    destroy();
+                }
+            }
+            return;
+        }
+
+        for (Integer channelId : newChannels) {
             String streamId = id + "-" + channelId;
             StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
             channels.put(channelId, new LinkedBlockingQueue<>(MAX_QUEUE_SIZE));
+            addedChannels.add(channelId);
             log.info("Stream " + id + " add channel " + channelId);
         }
 
-        for (SerializedPage page : initialPages) {
-            channels.values().forEach(channel -> {
+        log.info("Stream " + id + " adding " + pendingPages.size() + " pages to channels: " + channels.keySet());
+        for (SerializedPage page : pendingPages) {
+            newChannels.stream().map(channels::get).forEach(channel -> {
                 try {
                     channel.put(page);
-                    log.info("Stream " + id + " add page to channels");
                 }
                 catch (InterruptedException e) {
                     throw new RuntimeException(e);
@@ -123,21 +139,24 @@ public class BroadcastStream
 
         if (noMoreChannels) {
             channelsAdded = true;
-            initialPages.clear();
+            pendingPages.clear();
         }
     }
 
     @Override
     public boolean isClosed()
     {
-        return eos && initialPages.isEmpty() && channels.values().stream().allMatch(BlockingQueue::isEmpty);
+        return eos && channelsAdded && channels.isEmpty();
     }
 
     @Override
     public void destroy()
     {
         log.info("Stream " + id + " destroyed");
-        streamDestroyHandler.accept(true);
+        StreamManager.remove(id);
+        if (streamDestroyHandler != null) {
+            streamDestroyHandler.accept(true);
+        }
     }
 
     @Override
@@ -145,7 +164,7 @@ public class BroadcastStream
     {
         channels.remove(channelId);
         log.info("Stream " + id + " channel " + channelId + " destroyed");
-        if (channels.isEmpty() && streamDestroyHandler != null) {
+        if (channels.isEmpty() && channelsAdded) {
             destroy();
         }
     }
@@ -162,8 +181,7 @@ public class BroadcastStream
     {
         if (!eos) {
             if (!channelsAdded) {
-                initialPages.put(EOS);
-                return;
+                pendingPages.put(EOS);
             }
 
             for (BlockingQueue<SerializedPage> channel : channels.values()) {
@@ -172,5 +190,11 @@ public class BroadcastStream
             eos = true;
             log.info("Stream " + id + " closed");
         }
+    }
+
+    @Override
+    public String toString()
+    {
+        return id;
     }
 }

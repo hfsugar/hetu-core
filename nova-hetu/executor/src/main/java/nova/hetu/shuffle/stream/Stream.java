@@ -43,6 +43,12 @@ public interface Stream
     void write(Page page)
             throws InterruptedException;
 
+    default void addChannels(List<Integer> channelIds)
+            throws InterruptedException
+    {
+        addChannels(channelIds, true);
+    }
+
     void addChannels(List<Integer> channelIds, boolean noMoreChannels)
             throws InterruptedException;
 

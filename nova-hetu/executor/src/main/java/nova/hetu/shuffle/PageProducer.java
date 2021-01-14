@@ -18,6 +18,7 @@ import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
 import nova.hetu.shuffle.stream.Stream;
 import nova.hetu.shuffle.stream.StreamFactory;
+import org.apache.log4j.Logger;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -25,10 +26,12 @@ import java.util.function.Consumer;
 public class PageProducer
         implements AutoCloseable
 {
+    public static final Logger LOG = Logger.getLogger(PageProducer.class);
     private final Stream stream;
 
     public PageProducer(String producerId, PagesSerde pagesSerde, Stream.Type type)
     {
+        LOG.info("Create or get producer " + producerId);
         this.stream = StreamFactory.getOrCreate(producerId, pagesSerde, type);
     }
 
