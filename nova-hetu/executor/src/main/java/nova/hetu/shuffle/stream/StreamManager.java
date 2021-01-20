@@ -28,7 +28,6 @@ public class StreamManager
 
     public static Stream get(String streamId)
     {
-        LOG.info("Getting stream for: " + streamId);
         return streams.get(streamId);
     }
 

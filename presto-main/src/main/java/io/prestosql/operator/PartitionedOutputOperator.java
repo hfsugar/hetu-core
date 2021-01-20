@@ -443,8 +443,13 @@ public class PartitionedOutputOperator
                     partitionPageBuilder.reset();
 
                     try {
-                        outputBuffer.enqueue(partition, pagePartition);
-                        pageProducers.get(partition).send(pagePartition);
+                        // TODO: choose based on configurations
+                        if (false) {
+                            outputBuffer.enqueue(partition, pagePartition);
+                        }
+                        else {
+                            pageProducers.get(partition).send(pagePartition);
+                        }
                         pagesAdded.incrementAndGet();
                         rowsAdded.addAndGet(pagePartition.getPositionCount());
                     }

@@ -14,7 +14,6 @@
  */
 package nova.hetu.shuffle.rsocket;
 
-import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.hetu.core.transport.execution.buffer.PageCodecMarker;
@@ -25,12 +24,12 @@ import io.rsocket.core.RSocketConnector;
 import io.rsocket.frame.decoder.PayloadDecoder;
 import io.rsocket.transport.netty.client.TcpClientTransport;
 import io.rsocket.util.DefaultPayload;
+import nova.hetu.shuffle.ShuffleClientCallback;
 import org.apache.log4j.Logger;
 import reactor.core.publisher.Flux;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class RsShuffleClient
@@ -39,9 +38,8 @@ public class RsShuffleClient
 
     private RsShuffleClient() {}
 
-    public static Future getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer)
+    public static void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback)
     {
-        SettableFuture future = SettableFuture.create();
         RSocket client = RSocketConnector.create()
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
                 .connect(TcpClientTransport.create(host, port))
@@ -53,17 +51,15 @@ public class RsShuffleClient
                 .limitRate(1000) //dynamically calculate rate??
                 .doOnComplete(() -> {
                     log.info("*******************Closing flux for result " + producerId);
-                    future.set(true);
+                    shuffleClientCallback.clientFinished();
                 })
                 .doOnCancel(() -> {
                     log.info(producerId + " CANCELLED");
-                })
-                .doOnCancel(() -> {
-                    future.set(true);
-                    log.info(producerId + " TERMINATED");
+                    shuffleClientCallback.clientFinished();
                 })
                 .doOnError(e -> {
-                    log.error(producerId + " Error getting pages: " + e.getMessage());
+                    String error = producerId + " Error getting pages: " + e.getMessage();
+                    shuffleClientCallback.clientFailed(new Throwable(error));
                 });
 
         flux.subscribe(payload -> {
@@ -84,23 +80,18 @@ public class RsShuffleClient
                 return;
             }
 
-//            log.info("*******************getting page: " + page);
             try {
                 pageOutputBuffer.put(page);
             }
             catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            log.info(page);
         });
-
-        return future;
     }
 
     public static void main(String[] args)
             throws InterruptedException, ExecutionException
     {
-        Future future = getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>());
-        future.get();
+        getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>(), null);
     }
 }

@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static nova.hetu.shuffle.stream.Constants.EOS;
@@ -40,16 +41,17 @@ import static nova.hetu.shuffle.stream.PageSplitterUtil.splitPage;
 public class BasicStream
         implements Stream
 {
-    private static Logger log = Logger.getLogger(BasicStream.class);
+    private static final Logger log = Logger.getLogger(BasicStream.class);
 
     private final BlockingQueue<SerializedPage> queue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE /** shuffle.grpc.buffer_size_in_item */);
+    private final Set<Integer> addedChannels = new HashSet<>();
     private final Set<Integer> channels = new HashSet<>();
-    private final Set<Integer> closedChannels = new HashSet<>();
 
     private final PagesSerde serde;
     private final String id;
 
     private boolean eos; // endOfStream
+    private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
 
     public BasicStream(String id, PagesSerde serde)
@@ -70,15 +72,7 @@ public class BasicStream
     public SerializedPage take(int channelId)
             throws InterruptedException
     {
-        SerializedPage page = take();
-        if (page == EOS) {
-            closedChannels.add(channelId);
-            if (closedChannels.size() < channels.size()) {
-                // Make sure all the channels can get EOS
-                queue.put(EOS);
-            }
-        }
-        return page;
+        return take();
     }
 
     /**
@@ -103,29 +97,58 @@ public class BasicStream
     public void addChannels(List<Integer> channelIds, boolean noMoreChannels)
             throws InterruptedException
     {
+        if (channelsAdded) {
+            return;
+        }
+
+        List<Integer> newChannels = channelIds.stream().filter(channelId -> !addedChannels.contains(channelId)).collect(Collectors.toList());
+        if (newChannels.isEmpty()) {
+            // streams all finish but haven't received noMoreChannels
+            // so we need to destroy the main stream here
+            if (noMoreChannels) {
+                channelsAdded = true;
+                if (channels.isEmpty() && isClosed()) {
+                    destroy();
+                }
+            }
+            return;
+        }
+
         for (Integer channelId : channelIds) {
-            if (channels.contains(channelId)) {
+            if (addedChannels.contains(channelId)) {
                 continue;
             }
 
             String streamId = id + "-" + channelId;
             StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
             channels.add(channelId);
+            addedChannels.add(channelId);
+            log.info("Stream " + id + " add channel " + channelId);
             if (eos) {
                 queue.put(EOS);
             }
+        }
+
+        if (noMoreChannels) {
+            channelsAdded = true;
         }
     }
 
     @Override
     public boolean isClosed()
     {
+        // When there are multiple channels, stream should only
+        // be closed when all channels are added
+        if (!addedChannels.isEmpty() && !channelsAdded) {
+            return false;
+        }
         return eos && queue.isEmpty();
     }
 
     @Override
     public void destroy()
     {
+        log.info("Stream " + id + " destroyed");
         StreamManager.remove(id);
         if (streamDestroyHandler != null) {
             streamDestroyHandler.accept(true);
@@ -135,8 +158,9 @@ public class BasicStream
     @Override
     public void destroy(int channelId)
     {
+        log.info("Stream " + id + " channel " + channelId + " destroyed");
         channels.remove(channelId);
-        if (channels.isEmpty()) {
+        if (channels.isEmpty() && channelsAdded) {
             destroy();
         }
     }
@@ -148,14 +172,27 @@ public class BasicStream
     }
 
     @Override
-    public void close()
+    public synchronized void close()
             throws InterruptedException
     {
         if (!eos) {
+            log.info("Closing Stream " + id);
             eos = true;
+            if (addedChannels.isEmpty()) {
+                log.info("Adding EOS to " + id);
+                queue.put(EOS);
+                return;
+            }
             for (int i = 0; i < channels.size(); i++) {
+                log.info("Adding EOS to " + id + "-" + i);
                 queue.put(EOS);
             }
         }
+    }
+
+    @Override
+    public String toString()
+    {
+        return id;
     }
 }

@@ -114,11 +114,10 @@ public class SqlTaskExecutionFactory
     {
         OutputBuffers.BufferType type = outputBuffers.getType();
         List<PageProducer> producers = new ArrayList<>();
-        System.out.println(taskId.toString() + " CreateProducers: " + totalPartitions.orElse(-1));
         if (type == PARTITIONED) {
-            for (String partition : outputBuffers.getBuffers().keySet()) { //partition id is 0 based
-                producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
-            }
+            outputBuffers.getBuffers().keySet().stream().sorted().forEach(partition -> {
+                producers.add(new PageProducer(getProducerId(taskId.toString(), Integer.parseInt(partition)), pagesSerde, BASIC));
+            });
         }
         else if (type == BROADCAST) {
             producers.add(new PageProducer(taskId.toString(), pagesSerde, Stream.Type.BROADCAST));
