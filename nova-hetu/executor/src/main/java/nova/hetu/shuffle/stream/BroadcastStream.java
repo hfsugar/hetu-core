@@ -151,7 +151,14 @@ public class BroadcastStream
     @Override
     public boolean isClosed()
     {
-        return eos && channelsAdded && channels.isEmpty();
+        boolean allChannelsEmpty = true;
+        for (BlockingQueue<SerializedPage> channel : channels.values()) {
+            if (!channel.isEmpty()) {
+                allChannelsEmpty = false;
+                break;
+            }
+        }
+        return eos && channelsAdded && allChannelsEmpty;
     }
 
     @Override
