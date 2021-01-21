@@ -133,8 +133,8 @@ public class PrestoServer
         try {
             Injector injector = app.strictConfig().initialize();
 
-            //GrpcServer.start();
-            RsServer.start(injector.getInstance(ShuffleServiceConfig.class));
+            //new GrpcServer(injector.getInstance(ShuffleServiceConfig.class)).start();
+            new RsServer(injector.getInstance(ShuffleServiceConfig.class)).start();
 
             logLocation(log, "Working directory", Paths.get("."));
             logLocation(log, "Etc directory", Paths.get("etc"));

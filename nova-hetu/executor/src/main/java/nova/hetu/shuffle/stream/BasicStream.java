@@ -156,7 +156,7 @@ public class BasicStream
     }
 
     @Override
-    public void destroy(int channelId)
+    public void destroyChannel(int channelId)
     {
         log.info("Stream " + id + " channel " + channelId + " destroyed");
         channels.remove(channelId);

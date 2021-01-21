@@ -20,16 +20,21 @@ import io.rsocket.transport.netty.server.TcpServerTransport;
 import nova.hetu.shuffle.rsocket.RsShuffleService;
 
 public class RsServer
+        implements ShuffleServer
 {
-    private RsServer() {}
+    private final ShuffleServiceConfig shuffleServiceConfig;
 
-    public static void main(String[] args)
-            throws InterruptedException
+    public RsServer(ShuffleServiceConfig shuffleServiceConfig)
     {
-        start(new ShuffleServiceConfig());
+        this.shuffleServiceConfig = shuffleServiceConfig;
     }
 
-    public static void start(ShuffleServiceConfig shuffleServiceConfig)
+    public static void main(String[] args)
+    {
+        new RsServer(new ShuffleServiceConfig()).start();
+    }
+
+    public void start()
     {
         RSocketServer.create(new RsShuffleService())
                 .payloadDecoder(PayloadDecoder.ZERO_COPY)
@@ -40,7 +45,7 @@ public class RsServer
         System.out.println("Server started");
     }
 
-    public static void shutdown()
+    public void shutdown()
     {
         //do nothing for now
     }

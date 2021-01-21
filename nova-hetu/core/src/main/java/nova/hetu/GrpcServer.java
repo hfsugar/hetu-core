@@ -22,18 +22,19 @@ import org.apache.log4j.Logger;
 import java.io.IOException;
 
 public class GrpcServer
+        implements ShuffleServer
 {
     private static Logger log = Logger.getLogger(GrpcServer.class);
     private static Cluster cluster;
 
-    private GrpcServer() {}
+    private final ShuffleServiceConfig shuffleServiceConfig;
 
-    public static void main(String[] args)
+    public GrpcServer(ShuffleServiceConfig shuffleServiceConfig)
     {
-        start();
+        this.shuffleServiceConfig = shuffleServiceConfig;
     }
 
-    public static void start()
+    public void start()
     {
         addTestMasters();
         int i = 0;
@@ -61,8 +62,13 @@ public class GrpcServer
         ClusterConfig.config.addMaster(new ClusterConfig.EndPoint(ClusterConfig.config.local.ip, ClusterConfig.config.local.port + 2));
     }
 
-    public static void shutdown()
+    public void shutdown()
     {
         cluster.shutdown();
+    }
+
+    public static void main(String[] args)
+    {
+        new GrpcServer(new ShuffleServiceConfig()).start();
     }
 }

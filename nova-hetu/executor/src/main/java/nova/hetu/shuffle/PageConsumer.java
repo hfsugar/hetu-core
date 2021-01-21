@@ -43,8 +43,9 @@ public class PageConsumer
         this.serde = serde;
 
         // TODO: pass in an event listener to handler success and failure events
-        RsShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
-//        future = ShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer);
+        // ShuffleClient shuffleClient = new GrpcShuffleClient();
+        ShuffleClient shuffleClient = new RsShuffleClient();
+        shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
     }
 
     public Page poll()
