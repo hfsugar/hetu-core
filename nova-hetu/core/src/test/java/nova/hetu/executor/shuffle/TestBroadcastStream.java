@@ -17,6 +17,7 @@ package nova.hetu.executor.shuffle;
 import com.google.common.collect.ImmutableList;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import nova.hetu.RsServer;
+import nova.hetu.ShuffleServer;
 import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
@@ -34,11 +35,14 @@ import static org.testng.Assert.assertTrue;
 
 public class TestBroadcastStream
 {
+    ShuffleServer shuffleServer;
+
     @BeforeSuite
     public void setup()
             throws InterruptedException
     {
-        RsServer.start(new ShuffleServiceConfig());
+        shuffleServer = new RsServer(new ShuffleServiceConfig());
+        shuffleServer.start();
     }
 
     @AfterSuite

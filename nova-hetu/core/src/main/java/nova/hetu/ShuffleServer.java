@@ -12,13 +12,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package nova.hetu.shuffle;
+package nova.hetu;
 
-import io.hetu.core.transport.execution.buffer.SerializedPage;
-
-import java.util.concurrent.LinkedBlockingQueue;
-
-public interface ShuffleClient
+public interface ShuffleServer
 {
-    void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback);
+    void start();
+
+    void shutdown();
 }

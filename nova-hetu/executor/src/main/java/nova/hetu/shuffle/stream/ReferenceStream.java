@@ -72,13 +72,13 @@ public class ReferenceStream
     public void destroy()
     {
         StreamManager.remove(streamId);
-        stream.destroy(this.channelId);
+        stream.destroyChannel(this.channelId);
     }
 
     @Override
-    public void destroy(int channelId)
+    public void destroyChannel(int channelId)
     {
-        stream.destroy(channelId);
+        stream.destroyChannel(channelId);
     }
 
     @Override

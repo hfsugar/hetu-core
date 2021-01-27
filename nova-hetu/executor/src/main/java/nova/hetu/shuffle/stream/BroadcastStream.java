@@ -160,7 +160,7 @@ public class BroadcastStream
     }
 
     @Override
-    public void destroy(int channelId)
+    public void destroyChannel(int channelId)
     {
         channels.remove(channelId);
         log.info("Stream " + id + " channel " + channelId + " destroyed");
