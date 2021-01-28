@@ -28,6 +28,7 @@ import nova.hetu.shuffle.PageProducer;
 import java.util.Optional;
 import java.util.Random;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static org.testng.Assert.assertEquals;
 
 public class ShuffleServiceTestUtil
@@ -154,6 +155,30 @@ public class ShuffleServiceTestUtil
         @Override
         public void writeBlock(SliceOutput output, Block block)
         {
+        }
+    }
+
+    static class MockLocalConstantPagesSerde
+            extends PagesSerde
+    {
+        MockLocalConstantPagesSerde()
+        {
+            super(new MockBlockEncodingSerde(), Optional.empty(), Optional.empty(), Optional.empty());
+        }
+
+        @Override
+        public SerializedPage serialize(Page page)
+        {
+            String strValue = String.valueOf(page.getBlock(0).getLong(0, 0));
+            return new SerializedPage(strValue.getBytes(), (byte) 0, page.getPositionCount(), strValue.getBytes().length, page);
+        }
+
+        @Override
+        public Page deserialize(SerializedPage serializedPage)
+        {
+            Page page = serializedPage.getRawPageReference();
+            checkArgument(page != null, "Page is null");
+            return page;
         }
     }
 }

@@ -14,6 +14,7 @@
  */
 package nova.hetu.shuffle.rsocket;
 
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.rsocket.ConnectionSetupPayload;
 import io.rsocket.Payload;
@@ -59,7 +60,7 @@ public class RsShuffleService
 
     private Stream getStream(String producerId)
     {
-        Stream stream = StreamManager.get(producerId);
+        Stream stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
 
         // TODO consider adding an event listener to wake up
         /**
@@ -68,7 +69,7 @@ public class RsShuffleService
         long maxWait = 5000;
         long sleepInterval = 50;
         while (stream == null && maxWait > 0) {
-            stream = StreamManager.get(producerId);
+            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
             try {
                 maxWait -= sleepInterval;
                 Thread.sleep(sleepInterval);

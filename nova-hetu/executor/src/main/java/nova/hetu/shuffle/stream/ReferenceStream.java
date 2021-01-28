@@ -35,6 +35,12 @@ public class ReferenceStream
     }
 
     @Override
+    public void setCommunicationMode()
+    {
+        stream.setCommunicationMode();
+    }
+
+    @Override
     public SerializedPage take()
             throws InterruptedException
     {

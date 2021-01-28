@@ -17,6 +17,7 @@ package nova.hetu.shuffle;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import nova.hetu.shuffle.stream.Stream;
 import nova.hetu.shuffle.stream.StreamManager;
@@ -56,7 +57,7 @@ public class ShuffleService
         final String producerId = producer.getProducerId();
         log.info("====================== Get result for " + producerId);
         ServerCallStreamObserver<ShuffleOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ShuffleOuterClass.Page>) responseObserver;
-        Stream stream = StreamManager.get(producer.getProducerId());
+        Stream stream = StreamManager.get(producer.getProducerId(), PagesSerde.CommunicationMode.STANDARD);
 
         /**
          * Wait until stream is created, another way is to simply return and let the client try again
@@ -64,7 +65,7 @@ public class ShuffleService
         long maxWait = 1000;
         long sleepInterval = 50;
         while (stream == null && !serverCallStreamObserver.isCancelled() && maxWait > 0) {
-            stream = StreamManager.get(producerId);
+            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
             try {
                 maxWait -= sleepInterval;
                 Thread.sleep(sleepInterval);

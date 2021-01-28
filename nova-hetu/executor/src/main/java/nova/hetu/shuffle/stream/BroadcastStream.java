@@ -46,6 +46,7 @@ public class BroadcastStream
     private final PagesSerde serde;
     private final String id;
     private boolean eos; // endOfStream
+    private PagesSerde.CommunicationMode commMode;
 
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
@@ -54,6 +55,13 @@ public class BroadcastStream
     {
         this.id = id;
         this.serde = serde;
+        this.commMode = PagesSerde.CommunicationMode.INMEMORY;
+    }
+
+    @Override
+    public void setCommunicationMode()
+    {
+        commMode = PagesSerde.CommunicationMode.STANDARD;
     }
 
     @Override

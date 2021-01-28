@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.prestosql.spi.Page;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Properties;
@@ -32,10 +33,12 @@ public class SerializedPage
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SerializedPage.class).instanceSize();
 
-    private final Slice slice;
-    private final int positionCount;
-    private final int uncompressedSizeInBytes;
-    private final byte pageCodecMarkers;
+    private Slice slice;
+    private int positionCount;
+    private int uncompressedSizeInBytes;
+    private byte pageCodecMarkers;
+    private final Page page;
+    private PagesSerde pagesSerde;
     private Properties pageMetadata = new Properties();
 
     @JsonCreator
@@ -51,7 +54,8 @@ public class SerializedPage
                 fromByteValue(pageCodecMarkers),
                 positionCount,
                 uncompressedSizeInBytes,
-                pageMetadata);
+                pageMetadata,
+                null);
     }
 
     public SerializedPage(byte[] sliceArray, byte pageCodecMarkers, int positionCount, int uncompressedSizeInBytes)
@@ -63,7 +67,29 @@ public class SerializedPage
                 uncompressedSizeInBytes);
     }
 
-    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
+    public SerializedPage(byte[] sliceArray, byte pageCodecMarkers, int positionCount, int uncompressedSizeInBytes, Page page)
+    {
+        this(
+                Slices.wrappedBuffer(sliceArray),
+                fromByteValue(pageCodecMarkers),
+                positionCount,
+                uncompressedSizeInBytes,
+                page);
+    }
+
+    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata, Page page)
+    {
+        this.page = page;
+        populate(slice, markers, positionCount, uncompressedSizeInBytes, pageMetadata);
+    }
+
+    public SerializedPage(Page page, PagesSerde pagesSerde)
+    {
+        this.page = requireNonNull(page, "Page cannot be null");
+        this.pagesSerde = requireNonNull(pagesSerde, "Page Serde cannot be null");
+    }
+
+    public void populate(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
     {
         this.slice = requireNonNull(slice, "slice is null");
         this.positionCount = positionCount;
@@ -82,69 +108,98 @@ public class SerializedPage
         }
     }
 
+    private void lateSerialize()
+    {
+        if (this.slice != null) {
+            return;
+        }
+        pagesSerde.serialize(this);
+    }
+
     public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes)
     {
-        this(slice, markers, positionCount, uncompressedSizeInBytes, null);
+        this(slice, markers, positionCount, uncompressedSizeInBytes, null, null);
+    }
+
+    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Page page)
+    {
+        this(slice, markers, positionCount, uncompressedSizeInBytes, null, page);
     }
 
     public int getSizeInBytes()
     {
+        lateSerialize();
         return slice.length();
+    }
+
+    public Page getRawPageReference()
+    {
+        return page;
     }
 
     @JsonProperty
     public int getUncompressedSizeInBytes()
     {
+        lateSerialize();
         return uncompressedSizeInBytes;
     }
 
     public long getRetainedSizeInBytes()
     {
+        lateSerialize();
         return INSTANCE_SIZE + slice.getRetainedSize();
     }
 
     @JsonProperty
     public int getPositionCount()
     {
+        lateSerialize();
         return positionCount;
     }
 
     @JsonProperty
     public byte[] getSliceArray()
     {
+        lateSerialize();
         return slice.getBytes();
     }
 
     public Slice getSlice()
     {
+        lateSerialize();
         return slice;
     }
 
     @JsonProperty
     public byte getPageCodecMarkers()
     {
+        lateSerialize();
         return pageCodecMarkers;
     }
 
     public boolean isCompressed()
     {
+        lateSerialize();
         return COMPRESSED.isSet(pageCodecMarkers);
     }
 
     public boolean isEncrypted()
     {
+        lateSerialize();
         return ENCRYPTED.isSet(pageCodecMarkers);
     }
 
     @JsonProperty
     public Properties getPageMetadata()
     {
+        lateSerialize();
         return pageMetadata;
     }
 
     @Override
     public String toString()
     {
+        lateSerialize();
         return toStringHelper(this)
                 .add("positionCount", positionCount)
                 .add("pageCodecMarkers", PageCodecMarker.toSummaryString(pageCodecMarkers))
