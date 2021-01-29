@@ -19,7 +19,6 @@ import io.prestosql.Session;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.MemoryPoolAssignmentsRequest;
 import io.prestosql.sql.planner.PlanFragment;
 
@@ -64,7 +63,7 @@ public interface TaskManager
      * Gets the unique instance id of a task.  This can be used to detect a task
      * that was destroyed and recreated.
      */
-    String getTaskInstanceId(TaskId taskId);
+    java.lang.String getTaskInstanceId(TaskId taskId);
 
     /**
      * Gets future status for the task after the state changes from
@@ -105,12 +104,12 @@ public interface TaskManager
      * NOTE: this design assumes that only tasks and buffers that will
      * eventually exist are queried.
      */
-    ListenableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize);
+    ListenableFuture<BufferResult> getTaskResults(TaskId taskId, String bufferId, long startingSequenceId, DataSize maxSize);
 
     /**
      * Acknowledges previously received results.
      */
-    void acknowledgeTaskResults(TaskId taskId, OutputBufferId bufferId, long sequenceId);
+    void acknowledgeTaskResults(TaskId taskId, String bufferId, long sequenceId);
 
     /**
      * Aborts a result buffer for a task.  If the task or buffer has not been
@@ -120,7 +119,7 @@ public interface TaskManager
      * NOTE: this design assumes that only tasks and buffers that will
      * eventually exist are queried.
      */
-    TaskInfo abortTaskResults(TaskId taskId, OutputBufferId bufferId);
+    TaskInfo abortTaskResults(TaskId taskId, String bufferId);
 
     /**
      * Adds a state change listener to the specified task.

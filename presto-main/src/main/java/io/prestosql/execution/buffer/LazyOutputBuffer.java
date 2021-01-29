@@ -18,12 +18,14 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.ExtendedSettableFuture;
 import io.airlift.units.DataSize;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.StateMachine;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.TaskId;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.context.LocalMemoryContext;
+import io.prestosql.spi.Page;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import javax.annotation.concurrent.GuardedBy;
 
@@ -45,49 +47,41 @@ import static io.prestosql.execution.buffer.BufferState.TERMINAL_BUFFER_STATES;
 import static java.util.Objects.requireNonNull;
 
 public class LazyOutputBuffer
-        implements OutputBuffer
+        extends OutputBuffer
 {
-    private final StateMachine<BufferState> state;
-    private final String taskInstanceId;
-    private final DataSize maxBufferSize;
-    private final Supplier<LocalMemoryContext> systemMemoryContextSupplier;
-    private final Executor executor;
+    private final java.lang.String taskInstanceId;
 
     @GuardedBy("this")
     private OutputBuffer delegate;
 
     @GuardedBy("this")
-    private final Set<OutputBufferId> abortedBuffers = new HashSet<>();
+    private final Set<String> abortedBuffers = new HashSet<>();
 
     @GuardedBy("this")
     private final List<PendingRead> pendingReads = new ArrayList<>();
 
     public LazyOutputBuffer(
             TaskId taskId,
-            String taskInstanceId,
+            java.lang.String taskInstanceId,
             Executor executor,
             DataSize maxBufferSize,
             Supplier<LocalMemoryContext> systemMemoryContextSupplier)
     {
+        super(new StateMachine<>(taskId + "-buffer", executor, OPEN, TERMINAL_BUFFER_STATES),
+                maxBufferSize,
+                systemMemoryContextSupplier,
+                executor,
+                null);
+
         requireNonNull(taskId, "taskId is null");
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
-        this.executor = requireNonNull(executor, "executor is null");
-        state = new StateMachine<>(taskId + "-buffer", executor, OPEN, TERMINAL_BUFFER_STATES);
-        this.maxBufferSize = requireNonNull(maxBufferSize, "maxBufferSize is null");
         checkArgument(maxBufferSize.toBytes() > 0, "maxBufferSize must be at least 1");
-        this.systemMemoryContextSupplier = requireNonNull(systemMemoryContextSupplier, "systemMemoryContextSupplier is null");
     }
 
     @Override
     public void addStateChangeListener(StateChangeListener<BufferState> stateChangeListener)
     {
         state.addStateChangeListener(stateChangeListener);
-    }
-
-    @Override
-    public boolean isFinished()
-    {
-        return state.get() == FINISHED;
     }
 
     @Override
@@ -118,7 +112,7 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public OutputBufferInfo getInfo()
+    public OutputBufferStatistics getInfo()
     {
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -131,7 +125,7 @@ public class LazyOutputBuffer
             //
             BufferState state = this.state.get();
 
-            return new OutputBufferInfo(
+            return new OutputBufferStatistics(
                     "UNINITIALIZED",
                     state,
                     state.canAddBuffers(),
@@ -146,9 +140,9 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public void setOutputBuffers(OutputBuffers newOutputBuffers)
+    public void setOutputBuffers(OutputBuffers newOutputBuffers, PagesSerde serde)
     {
-        Set<OutputBufferId> abortedBuffers = ImmutableSet.of();
+        Set<String> abortedBuffers = ImmutableSet.of();
         List<PendingRead> pendingReads = ImmutableList.of();
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -159,13 +153,13 @@ public class LazyOutputBuffer
                 }
                 switch (newOutputBuffers.getType()) {
                     case PARTITIONED:
-                        delegate = new PartitionedOutputBuffer(taskInstanceId, state, newOutputBuffers, maxBufferSize, systemMemoryContextSupplier, executor);
+                        delegate = new PartitionedOutputBuffer(taskInstanceId, state, newOutputBuffers, maxBufferSize, systemMemoryContextSupplier, executor, serde);
                         break;
                     case BROADCAST:
-                        delegate = new BroadcastOutputBuffer(taskInstanceId, state, maxBufferSize, systemMemoryContextSupplier, executor);
+                        delegate = new BroadcastOutputBuffer(taskInstanceId, state, maxBufferSize, systemMemoryContextSupplier, executor, serde);
                         break;
                     case ARBITRARY:
-                        delegate = new ArbitraryOutputBuffer(taskInstanceId, state, maxBufferSize, systemMemoryContextSupplier, executor);
+                        delegate = new ArbitraryOutputBuffer(taskInstanceId, state, maxBufferSize, systemMemoryContextSupplier, executor, serde);
                         break;
                 }
 
@@ -178,7 +172,7 @@ public class LazyOutputBuffer
             outputBuffer = delegate;
         }
 
-        outputBuffer.setOutputBuffers(newOutputBuffers);
+        outputBuffer.setOutputBuffers(newOutputBuffers, serde);
 
         // process pending aborts and reads outside of synchronized lock
         abortedBuffers.forEach(outputBuffer::abort);
@@ -188,7 +182,7 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public ListenableFuture<BufferResult> get(OutputBufferId bufferId, long token, DataSize maxSize)
+    public ListenableFuture<BufferResult> get(String bufferId, long token, DataSize maxSize)
     {
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -207,7 +201,7 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public void acknowledge(OutputBufferId bufferId, long token)
+    public void acknowledge(String bufferId, long token)
     {
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -218,7 +212,7 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public void abort(OutputBufferId bufferId)
+    public void abort(String bufferId)
     {
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -244,19 +238,19 @@ public class LazyOutputBuffer
         return outputBuffer.isFull();
     }
 
+    /**
+     * The LazyOutputBuffer should always delegate and enqueue() to a real OutputBuffer
+     * @param partition
+     * @param pages
+     */
     @Override
-    public void enqueue(List<SerializedPage> pages)
+    void doEnqueue(int partition, List<SerializedPage> pages)
     {
-        OutputBuffer outputBuffer;
-        synchronized (this) {
-            checkState(delegate != null, "Buffer has not been initialized");
-            outputBuffer = delegate;
-        }
-        outputBuffer.enqueue(pages);
+        throw new NotImplementedException();
     }
 
     @Override
-    public void enqueue(int partition, List<SerializedPage> pages)
+    public void enqueue(int partition, Page pages)
     {
         OutputBuffer outputBuffer;
         synchronized (this) {
@@ -339,13 +333,13 @@ public class LazyOutputBuffer
 
     private static class PendingRead
     {
-        private final OutputBufferId bufferId;
+        private final String bufferId;
         private final long startingSequenceId;
         private final DataSize maxSize;
 
         private final ExtendedSettableFuture<BufferResult> futureResult = ExtendedSettableFuture.create();
 
-        public PendingRead(OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
+        public PendingRead(String bufferId, long startingSequenceId, DataSize maxSize)
         {
             this.bufferId = requireNonNull(bufferId, "bufferId is null");
             this.startingSequenceId = startingSequenceId;

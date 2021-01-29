@@ -123,7 +123,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(driverContext);
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         MaterializedResult expected = toMaterializedResult(driverContext.getSession(), ImmutableList.of(VARCHAR), ImmutableList.of(input));
         MaterializedResult actual = toMaterializedResult(driverContext.getSession(), ImmutableList.of(VARCHAR), toPages(operator));
@@ -168,7 +168,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(newDriverContext());
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> actual = toPages(operator);
         assertEquals(actual.size(), 1);
@@ -219,7 +219,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(driverContext);
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         MaterializedResult expected = toMaterializedResult(driverContext.getSession(), ImmutableList.of(BIGINT), ImmutableList.of(new Page(inputBlock)));
         MaterializedResult actual = toMaterializedResult(driverContext.getSession(), ImmutableList.of(BIGINT), toPages(operator));
@@ -255,7 +255,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(driverContext);
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         MaterializedResult expected = toMaterializedResult(driverContext.getSession(), ImmutableList.of(VARCHAR), ImmutableList.of(input));
         MaterializedResult actual = toMaterializedResult(driverContext.getSession(), ImmutableList.of(VARCHAR), toPages(operator));
@@ -309,7 +309,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(driverContext);
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         // In the below loop we yield for every cell: 20 X 1000 times
         // Currently we don't check for the yield signal in the generated projection loop, we only check for the yield signal
@@ -376,7 +376,7 @@ public class TestScanFilterAndProjectOperator
 
         SourceOperator operator = factory.createOperator(driverContext);
         operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         // start driver; get null value due to yield for the first 15 times
         for (int i = 0; i < length; i++) {

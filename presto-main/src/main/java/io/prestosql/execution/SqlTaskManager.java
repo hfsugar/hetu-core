@@ -31,7 +31,6 @@ import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.LocalMemoryManager;
 import io.prestosql.memory.MemoryPool;
@@ -46,6 +45,7 @@ import io.prestosql.spiller.LocalSpillManager;
 import io.prestosql.spiller.NodeSpillConfig;
 import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.PlanFragment;
+import nova.hetu.ShuffleServiceConfig;
 import org.joda.time.DateTime;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
@@ -105,7 +105,7 @@ public class SqlTaskManager
     @GuardedBy("this")
     private long currentMemoryPoolAssignmentVersion;
     @GuardedBy("this")
-    private String coordinatorId;
+    private java.lang.String coordinatorId;
 
     private final CounterStat failedTasks = new CounterStat();
 
@@ -120,6 +120,7 @@ public class SqlTaskManager
             TaskManagementExecutor taskManagementExecutor,
             TaskManagerConfig config,
             NodeMemoryConfig nodeMemoryConfig,
+            ShuffleServiceConfig shuffleServiceConfig,
             LocalSpillManager localSpillManager,
             NodeSpillConfig nodeSpillConfig,
             GcMonitor gcMonitor,
@@ -162,7 +163,8 @@ public class SqlTaskManager
                         },
                         maxBufferSize,
                         failedTasks,
-                        metadata)));
+                        metadata,
+                        shuffleServiceConfig.getPort())));
     }
 
     private QueryContext createQueryContext(
@@ -329,7 +331,7 @@ public class SqlTaskManager
     }
 
     @Override
-    public String getTaskInstanceId(TaskId taskId)
+    public java.lang.String getTaskInstanceId(TaskId taskId)
     {
         SqlTask sqlTask = tasks.getUnchecked(taskId);
         sqlTask.recordHeartbeat();
@@ -367,7 +369,7 @@ public class SqlTaskManager
     }
 
     @Override
-    public ListenableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
+    public ListenableFuture<BufferResult> getTaskResults(TaskId taskId, String bufferId, long startingSequenceId, DataSize maxSize)
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
@@ -378,7 +380,7 @@ public class SqlTaskManager
     }
 
     @Override
-    public void acknowledgeTaskResults(TaskId taskId, OutputBufferId bufferId, long sequenceId)
+    public void acknowledgeTaskResults(TaskId taskId, String bufferId, long sequenceId)
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
@@ -388,7 +390,7 @@ public class SqlTaskManager
     }
 
     @Override
-    public TaskInfo abortTaskResults(TaskId taskId, OutputBufferId bufferId)
+    public TaskInfo abortTaskResults(TaskId taskId, String bufferId)
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
