@@ -93,6 +93,11 @@ public interface Stream
             throws InterruptedException;
 
     /**
+     * Set the communication mode
+     */
+    void setCommunicationMode();
+
+    /**
      * Check if the stream is closed
      *
      * @return if the stream is closed

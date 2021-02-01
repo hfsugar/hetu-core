@@ -17,8 +17,13 @@ package nova.hetu.shuffle;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
+import nova.hetu.shuffle.inmemory.LocalShuffleClient;
 import nova.hetu.shuffle.rsocket.RsShuffleClient;
 
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -34,18 +39,55 @@ public class PageConsumer
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
-        return new PageConsumer(producerInfo, serde);
+        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
     }
 
-    PageConsumer(ProducerInfo producerInfo, PagesSerde serde)
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, boolean forceCommunication)
+    {
+        // If we are forcing the communication, does not matter whether we are on the same server or not
+        if (forceCommunication) {
+            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
+        }
+
+        // Compare my ip and location ip and if match, initiate in-memory page shuffling
+        String myIP = null;
+        try {
+            final DatagramSocket socket = new DatagramSocket();
+            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+            myIP = socket.getLocalAddress().getHostAddress();
+        }
+        catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
+        catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (producerInfo.getHost().equals("127.0.0.1") || myIP.equals(producerInfo.getHost())) {
+            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
+        }
+
+        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
+    }
+
+    PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode)
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
 
-        // TODO: pass in an event listener to handler success and failure events
-        // ShuffleClient shuffleClient = new GrpcShuffleClient();
-        ShuffleClient shuffleClient = new RsShuffleClient();
-        shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+        switch (commMode) {
+            case INMEMORY:
+                ShuffleClient localShuffleClient = new LocalShuffleClient();
+                localShuffleClient.getResults(null, 0, producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+                break;
+            case STANDARD:
+                // TODO: pass in an event listener to handler success and failure events
+                ShuffleClient rsShuffleClient = new RsShuffleClient();
+                rsShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+                break;
+            default:
+                throw new RuntimeException("Unsupported PageConsumer type: " + commMode);
+        }
     }
 
     public Page poll()

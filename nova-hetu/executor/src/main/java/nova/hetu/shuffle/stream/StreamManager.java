@@ -14,6 +14,7 @@
  */
 package nova.hetu.shuffle.stream;
 
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,9 +27,14 @@ public class StreamManager
 
     private static ConcurrentHashMap<String, Stream> streams = new ConcurrentHashMap<>();
 
-    public static Stream get(String streamId)
+    public static Stream get(String streamId, PagesSerde.CommunicationMode commMode)
     {
-        return streams.get(streamId);
+        LOG.info("Getting stream for: " + streamId);
+        Stream stream = streams.get(streamId);
+        if (stream != null && commMode != PagesSerde.CommunicationMode.INMEMORY) {
+            stream.setCommunicationMode();
+        }
+        return stream;
     }
 
     public static Stream put(String streamId, Stream stream)

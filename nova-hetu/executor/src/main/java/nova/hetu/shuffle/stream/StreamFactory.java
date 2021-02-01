@@ -22,7 +22,7 @@ public class StreamFactory
 
     public static synchronized Stream getOrCreate(String producerId, PagesSerde serde, Stream.Type type)
     {
-        Stream stream = StreamManager.get(producerId);
+        Stream stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.INMEMORY);
         if (stream == null) {
             stream = create(producerId, serde, type);
         }

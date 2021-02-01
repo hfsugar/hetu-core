@@ -49,6 +49,7 @@ public class BasicStream
 
     private final PagesSerde serde;
     private final String id;
+    private PagesSerde.CommunicationMode commMode;
 
     private boolean eos; // endOfStream
     private boolean channelsAdded;
@@ -66,6 +67,12 @@ public class BasicStream
             throws InterruptedException
     {
         return queue.take();
+    }
+
+    @Override
+    public void setCommunicationMode()
+    {
+        commMode = PagesSerde.CommunicationMode.STANDARD;
     }
 
     @Override
@@ -88,7 +95,7 @@ public class BasicStream
             throw new IllegalStateException("Stream has already been closed");
         }
         for (Page splittedPage : splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES)) {
-            SerializedPage serializedPage = serde.serialize(splittedPage);
+            SerializedPage serializedPage = serde.serialize(splittedPage, commMode);
             queue.put(serializedPage);
         }
     }

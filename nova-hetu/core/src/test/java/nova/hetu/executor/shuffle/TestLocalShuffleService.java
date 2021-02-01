@@ -16,15 +16,9 @@ package nova.hetu.executor.shuffle;
 
 import com.google.common.collect.ImmutableList;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
-import nova.hetu.RsServer;
-import nova.hetu.ShuffleServer;
-import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.ProducerInfo;
-import nova.hetu.shuffle.stream.StreamManager;
-import org.testng.annotations.AfterSuite;
-import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -42,25 +36,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-public class TestShuffleService
+public class TestLocalShuffleService
 {
-    ShuffleServer shuffleServer;
-
-    @BeforeSuite
-    public void setup()
-            throws InterruptedException
-    {
-        // shuffleServer = new GrpcServer();
-        shuffleServer = new RsServer(new ShuffleServiceConfig());
-        shuffleServer.start();
-    }
-
-    @AfterSuite
-    public void tearDown()
-    {
-        shuffleServer.shutdown();
-    }
-
     @Test
     public void TestSingleProducerSingleConsumerQueue()
             throws Exception
@@ -68,10 +45,9 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         PageProducer producer = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer.addConsumers(ImmutableList.of(bufferid), true);
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, 10, 10);
         producerThread.start();
@@ -80,7 +56,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
         consumerThread.start();
         consumerThread.join();
@@ -99,10 +75,9 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         PageProducer producer = new PageProducer(taskid + "-" + bufferid, serde, BASIC);
-        StreamManager.get(taskid + "-" + bufferid, PagesSerde.CommunicationMode.STANDARD);
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, 10, 10);
         producerThread.start();
         producerThread.join();
@@ -110,7 +85,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
         consumerThread.start();
         consumerThread.join();
@@ -129,10 +104,9 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         PageProducer producer = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, 10, 10);
         producerThread.start();
         producerThread.join();
@@ -140,7 +114,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
         consumerThread.start();
         producer.addConsumers(ImmutableList.of(bufferid), true);
@@ -160,14 +134,13 @@ public class TestShuffleService
     {
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         PageProducer producer = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer.addConsumers(ImmutableList.of(bufferid), true);
         producer.close();
 
         long[] result = new long[0];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 0);
         consumerThread.start();
         consumerThread.join();
@@ -180,10 +153,9 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         PageProducer producer = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer.addConsumers(ImmutableList.of(bufferid), true);
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, 10, 10);
         producerThread.start();
@@ -195,8 +167,8 @@ public class TestShuffleService
         long[] result = new long[10];
         long[] result2 = new long[10];
 
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
-        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
+        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
         Thread consumerThread2 = ShuffleServiceTestUtil.createConsumerThread(consumer2, result2, 10);
         consumerThread.start();
@@ -223,15 +195,14 @@ public class TestShuffleService
     {
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
 
         PageProducer producer1 = new PageProducer(taskid, serde, BASIC);
         PageProducer producer2 = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer1.addConsumers(ImmutableList.of(bufferid), true);
 
         Thread producer1Thread = ShuffleServiceTestUtil.createProducerThread(producer1, 0, 20, 10);
@@ -267,10 +238,10 @@ public class TestShuffleService
     {
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[40];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
 
         assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
@@ -278,7 +249,6 @@ public class TestShuffleService
 
         PageProducer producer1 = new PageProducer(taskid + "-" + bufferid, serde, BASIC);
         PageProducer producer2 = new PageProducer(taskid + "-" + bufferid, serde, BASIC);
-        StreamManager.get(taskid + "-" + bufferid, PagesSerde.CommunicationMode.STANDARD);
         producer1.addConsumers(ImmutableList.of(bufferid), true);
 
         Thread producer1Thread = ShuffleServiceTestUtil.createProducerThread(producer1, 0, 20, 10);
@@ -315,18 +285,17 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferId1 = 1;
         int bufferId2 = 2;
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[400];
-        PageConsumer consumer1 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferId1), serde);
-        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferId2), serde);
+        PageConsumer consumer1 = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferId1), serde, false);
+        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferId2), serde, false);
 
         assertFalse(consumer1.isEnded(), "page consumer started with ended status");
         assertFalse(consumer2.isEnded(), "page consumer started with ended status");
 
         PageProducer producer1 = new PageProducer(taskid, serde, BASIC);
         PageProducer producer2 = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer1.addConsumers(ImmutableList.of(bufferId1, bufferId2), true);
 
         Thread consumerThread1 = ShuffleServiceTestUtil.createConsumerThread(consumer1, result, 10);
@@ -366,16 +335,15 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 0);
 
         PageProducer producer1 = new PageProducer(taskid, serde, BASIC);
         PageProducer producer2 = new PageProducer(taskid, serde, BASIC);
         PageProducer producer3 = new PageProducer(taskid, serde, BASIC);
         PageProducer producer4 = new PageProducer(taskid, serde, BASIC);
-        StreamManager.get(taskid, PagesSerde.CommunicationMode.STANDARD);
         producer1.addConsumers(ImmutableList.of(bufferid), true);
 
         Thread producer1Thread = ShuffleServiceTestUtil.createProducerThread(producer1, 0, 1000, 0);
@@ -420,9 +388,9 @@ public class TestShuffleService
         String taskid = ShuffleServiceTestUtil.getTaskId();
         String bufferid = "0";
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         long[] result = new long[4000];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 0);
 
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
@@ -469,9 +437,8 @@ public class TestShuffleService
     {
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         PageProducer producer = new PageProducer(taskid + "-" + bufferid, serde, BASIC);
-        StreamManager.get(taskid + "-" + bufferid, PagesSerde.CommunicationMode.STANDARD);
         producer.addConsumers(ImmutableList.of(bufferid), true);
 
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, 10, 100);
@@ -481,7 +448,7 @@ public class TestShuffleService
         producer.close();
 
         long[] result = new long[10];
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 0);
         consumerThread.start();
         consumerThread.join();
@@ -501,16 +468,15 @@ public class TestShuffleService
         int bufferId2 = 1;
         int totalPages = 2000;
 
-        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         PageProducer producer = new PageProducer(taskId, serde, BASIC);
-        StreamManager.get(taskId, PagesSerde.CommunicationMode.STANDARD);
         Thread producerThread = ShuffleServiceTestUtil.createProducerThread(producer, 0, totalPages, 10);
 
         long[] result = new long[totalPages];
 
-        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId1), serde);
-        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId2), serde);
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId1), serde, false);
+        PageConsumer consumer2 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId2), serde, false);
 
         Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
         Thread consumerThread2 = ShuffleServiceTestUtil.createConsumerThread(consumer2, result, 10);

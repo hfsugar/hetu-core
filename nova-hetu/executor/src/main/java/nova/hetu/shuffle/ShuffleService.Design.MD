@@ -31,4 +31,10 @@ The operator sends pages to a target channel to be received by down stream opera
 #####ExchangeOperator
 The operators receiving pages sent by up stream operator
 
-`LocalExectionPlanner` uses ShuffleService to set up the communication channels by creating an instance of `ShuffleService`. The `ShuffleService` instance is passed to the 
+`LocalExectionPlanner` uses ShuffleService to set up the communication channels by creating an instance of `ShuffleService`. The `ShuffleService` instance is passed to the
+
+#####ShuffleClient
+There are several (in-the-works) shuffle clients that establish connection with the correspondent server
+and utilize page consuming routines. In order to speed up the in-memory communication and bypass unneeded
+page serialization and deserialization, the `LocalShuffleClient` is implemented. Other than that it's the
+`RsShuffleClient` for Rsocket type of communication. `UcxShuffleClient` is going to be added soon.

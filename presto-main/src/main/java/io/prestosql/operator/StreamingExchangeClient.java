@@ -61,7 +61,7 @@ public class StreamingExchangeClient
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
         if (!pageConsumers.containsKey(location)) {
-            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde);
+            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, false);
             pageConsumers.put(location, pageConsumer);
             activePageConsumers.offer(pageConsumer);
         }
