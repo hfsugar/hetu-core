@@ -103,7 +103,12 @@ public class IntArrayBlock
         this.valueIsNull = valueIsNull;
 
         sizeInBytes = (Integer.BYTES + Byte.BYTES) * (long) positionCount;
-        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + Integer.BYTES * values.size();
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + values.capacity();
+    }
+
+    @Override
+    public IntVec getValues(){
+        return values;
     }
 
     @Override
@@ -238,14 +243,17 @@ public class IntArrayBlock
     public Block copyRegion(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
-
         positionOffset += arrayOffset;
-        boolean[] newValueIsNull = valueIsNull == null ? null : compactArray(valueIsNull, positionOffset, length);
-        IntVec newValues = values.slice(positionOffset, positionOffset + length);
 
-//        if (newValueIsNull == valueIsNull && newValues == values) {
-//            return this;
-//        }
+        IntVec newValues = new IntVec(length);
+        for (int i = 0; i < length; i++) {
+            newValues.set(i, this.values.get(positionOffset + i));
+        }
+        boolean[] newValueIsNull = valueIsNull == null ? null : compactArray(valueIsNull, positionOffset, length);
+
+        if (newValueIsNull == valueIsNull && newValues == values) {
+            return this;
+        }
         return new IntArrayBlock(0, length, newValueIsNull, newValues);
     }
 

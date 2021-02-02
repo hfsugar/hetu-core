@@ -21,7 +21,6 @@ import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
-import io.airlift.log.Logger;
 import io.airlift.stats.TimeStat;
 import io.airlift.units.Duration;
 import io.prestosql.Session;
@@ -40,6 +39,7 @@ import io.prestosql.execution.StageInfo;
 import io.prestosql.execution.StageState;
 import io.prestosql.execution.TaskStatus;
 import io.prestosql.execution.buffer.OutputBuffers;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.failuredetector.FailureDetector;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;
 import io.prestosql.metadata.InternalNode;
@@ -128,8 +128,6 @@ public class SqlQueryScheduler
     private final HeuristicIndexerManager heuristicIndexerManager;
     private final Session session;
 
-    private static final Logger LOG = Logger.get(SqlQueryScheduler.class);
-
     public static SqlQueryScheduler createSqlQueryScheduler(
             QueryStateMachine queryStateMachine,
             LocationFactory locationFactory,
@@ -207,7 +205,7 @@ public class SqlQueryScheduler
         // Only fetch a distribution once per query to assure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
 
-        String rootBufferId = Iterables.getOnlyElement(rootOutputBuffers.getBuffers().keySet());
+        OutputBufferId rootBufferId = Iterables.getOnlyElement(rootOutputBuffers.getBuffers().keySet());
         List<SqlStageExecution> stages = createStages(
                 (fragmentId, tasks, noMoreExchangeLocations) -> updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations),
                 new AtomicInteger(),
@@ -286,13 +284,10 @@ public class SqlQueryScheduler
         }
     }
 
-    private static void updateQueryOutputLocations(QueryStateMachine queryStateMachine, String rootBufferId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations)
+    private static void updateQueryOutputLocations(QueryStateMachine queryStateMachine, OutputBufferId rootBufferId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations)
     {
         Set<URI> bufferLocations = tasks.stream()
-                .map(task -> {
-                    URI location = task.getTaskStatus().getSelf();
-                    return uriBuilderFrom(location).port(task.getTaskStatus().getShuffleServicePort()).build();
-                })
+                .map(task -> task.getTaskStatus().getSelf())
                 .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
                 .collect(toImmutableSet());
         queryStateMachine.updateOutputLocations(bufferLocations, noMoreExchangeLocations);
@@ -761,8 +756,8 @@ public class SqlQueryScheduler
 
             if (!childOutputBufferManagers.isEmpty()) {
                 // Add an output buffer to the child stages for each new task
-                List<String> newOutputBuffers = newTasks.stream()
-                        .map(task -> String.valueOf(task.getTaskId().getId()))
+                List<OutputBufferId> newOutputBuffers = newTasks.stream()
+                        .map(task -> new OutputBufferId(task.getTaskId().getId()))
                         .collect(toImmutableList());
                 for (OutputBufferManager child : childOutputBufferManagers) {
                     child.addOutputBuffers(newOutputBuffers, noMoreTasks);

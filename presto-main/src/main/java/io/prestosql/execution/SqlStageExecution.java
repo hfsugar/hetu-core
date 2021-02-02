@@ -43,7 +43,6 @@ import io.prestosql.sql.planner.plan.TableScanNode;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
-import javax.ws.rs.core.UriBuilder;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -355,9 +354,7 @@ public final class SqlStageExecution
             ImmutableMultimap.Builder<PlanNodeId, Split> newSplits = ImmutableMultimap.builder();
             for (RemoteTask sourceTask : sourceTasks) {
                 URI exchangeLocation = sourceTask.getTaskStatus().getSelf();
-                URI streamLocation = UriBuilder.fromUri(exchangeLocation).port(sourceTask.getTaskStatus().getShuffleServicePort()).build();
-                System.out.println("AddExchangeLocation: Adding streaming location for " + sourceTask.getTaskId().toString() + " : " + streamLocation.toString());
-                newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), streamLocation));
+                newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), exchangeLocation));
             }
             task.addSplits(newSplits.build());
         }
@@ -472,9 +469,7 @@ public final class SqlStageExecution
         sourceTasks.forEach((planNodeId, task) -> {
             TaskStatus status = task.getTaskStatus();
             if (status.getState() != TaskState.FINISHED) {
-                URI streamLocation = UriBuilder.fromUri(status.getSelf()).port(status.getShuffleServicePort()).build();
-                System.out.println("ScheduleTask: Adding streaming location for " + task.getTaskId().toString() + " : " + streamLocation.toString());
-                initialSplits.put(planNodeId, createRemoteSplitFor(taskId, streamLocation));
+                initialSplits.put(planNodeId, createRemoteSplitFor(taskId, status.getSelf()));
             }
         });
 

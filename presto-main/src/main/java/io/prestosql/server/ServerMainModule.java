@@ -148,7 +148,6 @@ import io.prestosql.type.TypeDeserializer;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
-import nova.hetu.ShuffleServiceConfig;
 
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
@@ -462,8 +461,7 @@ public class ServerMainModule
         // presto announcement
         discoveryBinder(binder).bindHttpAnnouncement("presto")
                 .addProperty("node_version", nodeVersion.toString())
-                .addProperty("coordinator", String.valueOf(serverConfig.isCoordinator()))
-                .addProperty("shuffleServicePort", String.valueOf(buildConfigObject(ShuffleServiceConfig.class).getPort()));
+                .addProperty("coordinator", String.valueOf(serverConfig.isCoordinator()));
 
         // server info resource
         jaxrsBinder(binder).bind(ServerInfoResource.class);
@@ -530,8 +528,6 @@ public class ServerMainModule
 
         // dynamic filter listener service
         binder.bind(DynamicFilterCacheManager.class).in(Scopes.SINGLETON);
-
-        configBinder(binder).bindConfig(ShuffleServiceConfig.class);
     }
 
     public static class ExecutorCleanup

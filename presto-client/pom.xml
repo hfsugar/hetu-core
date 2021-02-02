@@ -88,5 +88,9 @@
             <artifactId>testng</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.hetu.core</groupId>
+            <artifactId>hetu-transport</artifactId>
+        </dependency>
     </dependencies>
 </project>

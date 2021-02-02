@@ -17,7 +17,7 @@ package io.prestosql.client;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
-import io.prestosql.spi.Page;
+import io.hetu.core.transport.execution.buffer.SerializedPage;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
@@ -38,7 +38,7 @@ public class DataCenterQueryResults
     private final URI partialCancelUri;
     private final URI nextUri;
     private final List<Column> columns;
-    private final List<Page> data;
+    private final List<SerializedPage> data;
     private final StatementStats stats;
     private final QueryError error;
     private final List<Warning> warnings;
@@ -52,7 +52,7 @@ public class DataCenterQueryResults
             @JsonProperty("partialCancelUri") URI partialCancelUri,
             @JsonProperty("nextUri") URI nextUri,
             @JsonProperty("columns") List<Column> columns,
-            @JsonProperty("data") List<Page> data,
+            @JsonProperty("data") List<SerializedPage> data,
             @JsonProperty("stats") StatementStats stats,
             @JsonProperty("error") QueryError error,
             @JsonProperty("warnings") List<Warning> warnings,
@@ -113,7 +113,7 @@ public class DataCenterQueryResults
 
     @Nullable
     @JsonProperty
-    public List<Page> getData()
+    public List<SerializedPage> getData()
     {
         return data;
     }

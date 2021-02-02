@@ -15,7 +15,6 @@ package io.prestosql.execution;
 
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.Session;
-import io.prestosql.execution.ddl.DeallocateTask;
 import io.prestosql.execution.warnings.WarningCollector;
 import io.prestosql.filesystem.FileSystemClientManager;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;

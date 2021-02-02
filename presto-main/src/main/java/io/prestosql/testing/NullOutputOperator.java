@@ -35,7 +35,7 @@ public class NullOutputOperator
             implements OutputFactory
     {
         @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pageLayoutProcessor, PagesSerdeFactory serdeFactory)
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
         {
             return new NullOutputOperatorFactory(operatorId, planNodeId);
         }

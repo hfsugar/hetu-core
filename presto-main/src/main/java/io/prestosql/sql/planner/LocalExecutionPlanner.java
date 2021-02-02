@@ -208,7 +208,6 @@ import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
 import nova.hetu.omnicache.runtime.OmniRuntime;
-import nova.hetu.shuffle.PageProducer;
 
 import javax.inject.Inject;
 
@@ -247,6 +246,7 @@ import static io.prestosql.SystemSessionProperties.getDynamicFilteringMaxPerDriv
 import static io.prestosql.SystemSessionProperties.getDynamicFilteringWaitTime;
 import static io.prestosql.SystemSessionProperties.getFilterAndProjectMinOutputPageRowCount;
 import static io.prestosql.SystemSessionProperties.getFilterAndProjectMinOutputPageSize;
+import static io.prestosql.SystemSessionProperties.getOmniCacheEnabled;
 import static io.prestosql.SystemSessionProperties.getSpillOperatorThresholdReuseExchange;
 import static io.prestosql.SystemSessionProperties.getTaskConcurrency;
 import static io.prestosql.SystemSessionProperties.getTaskWriterCount;
@@ -408,8 +408,7 @@ public class LocalExecutionPlanner
             PartitioningScheme partitioningScheme,
             StageExecutionDescriptor stageExecutionDescriptor,
             List<PlanNodeId> partitionedSourceOrder,
-            OutputBuffer outputBuffer,
-            List<PageProducer> pageProducers)
+            OutputBuffer outputBuffer)
     {
         List<Symbol> outputLayout = partitioningScheme.getOutputLayout();
 
@@ -418,7 +417,7 @@ public class LocalExecutionPlanner
                 partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
-            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, pageProducers, new TaskOutputFactory(outputBuffer, pageProducers.get(0)));
+            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, new TaskOutputFactory(outputBuffer));
         }
 
         // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -474,7 +473,6 @@ public class LocalExecutionPlanner
                 outputLayout,
                 types,
                 partitionedSourceOrder,
-                pageProducers,
                 new PartitionedOutputFactory(
                         partitionFunction,
                         partitionChannels,
@@ -482,7 +480,6 @@ public class LocalExecutionPlanner
                         partitioningScheme.isReplicateNullsAndAny(),
                         nullChannel,
                         outputBuffer,
-                        pageProducers,
                         maxPagePartitioningBufferSize));
     }
 
@@ -493,7 +490,6 @@ public class LocalExecutionPlanner
             List<Symbol> outputLayout,
             TypeProvider types,
             List<PlanNodeId> partitionedSourceOrder,
-            List<PageProducer> outputStreams,
             OutputFactory outputOperatorFactory)
     {
         Session session = taskContext.getSession();
@@ -3026,22 +3022,58 @@ public class LocalExecutionPlanner
             }
             else {
                 Optional<Integer> hashChannel = hashSymbol.map(channelGetter(source));
-                if (session.getSystemProperties().get("omni").equals("true")) {
-                    String compileID;
+                if (getOmniCacheEnabled(session)) {
+                    List<String> compileID = new ArrayList<>();
                     OmniRuntime omniRuntime;
-                    //omni
                     long start = System.currentTimeMillis();
                     omniRuntime = new OmniRuntime();
-                    String code = "|k:vec[i64],v:vec[i64]|" +
-                            "let rs = tovec(result(for(zip(k,v),dictmerger[i64,i64,+],|b,i,n| merge(b,{n.$0,n.$1}))));" +
-                            "let k = result(for(rs,appender[i64],|b,i,n| merge(b,n.$0)));" +
-                            "let v = result(for(rs,appender[i64],|b,i,n| merge(b,n.$1)));" +
-                            "{k,v}";
+                    ArrayList<String> codes = new ArrayList<>();
 
-                    compileID = omniRuntime.compile(code);
-                    long end = System.currentTimeMillis();
-                    System.out.println("omni compile time: " + (end - start));
-                    return new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(omniRuntime, compileID);
+                    //two group by and two sum
+                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[i64]]|" +
+                            "let sum_dict_ = for(zip(v0, v1, v2, v3), dictmerger[{i64,i64}, {i64, i64},+], |b,i,n| " +
+                            "for(zip(n.$0, n.$1, n.$2, n.$3), b, |b_, i_, m|" +
+                            "merge(b, {{m.$0, m.$1}, {m.$2, m.$3}})));" +
+                            "let dict_0_1 = tovec(result(sum_dict_));" +
+                            "let k0 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$0)));" +
+                            "let k1 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$1)));" +
+                            "let sum_1 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$1.$0)));" +
+                            "let sum_2 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$1.$1)));" +
+                            "{k0, k1, sum_1, sum_2}");
+
+//                  sum and avg--using DoubleArrayBlock
+//                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[i64]]|" +
+//                            "let sum_dict_2 = for(zip(v0, v1, v2), dictmerger[{i64,i64}, i64,+], |b,i,n| " +
+//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
+//                            "merge(b, {{m.$0, m.$1}, m.$2})));" +
+//                            "let dict_0_1 = tovec(result(sum_dict_2));" +
+//                            "let k0 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$0)));" +
+//                            "let k1 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$1)));" +
+//                            "let sum_2 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$1)));" +
+//                            "let avg_sum_3 = for(zip(v0, v1, v3), dictmerger[{i64,i64}, {i64, i64}, +], |b,i,n| " +
+//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
+//                            "merge(b, {{m.$0, m.$1}, {m.$2, i64(1)}})));" +
+//                            "let avg_3 = result(for(tovec(result(avg_sum_3)), appender[f64], |b, i, n| merge(b, f64(n.$1.$0) / f64(n.$1.$1))));" +
+//                            "{k0, k1, sum_2, avg_3}");
+//                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[f64]]|" +
+//                            "let sum_dict_2 = for(zip(v0, v1, v2), dictmerger[{i64,i64}, i64,+], |b,i,n| " +
+//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
+//                            "merge(b, {{m.$0, m.$1}, m.$2})));" +
+//                            "let dict_0_1 = tovec(result(sum_dict_2));" +
+//                            "let k0 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$0)));" +
+//                            "let k1 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$1)));" +
+//                            "let sum_2 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$1)));" +
+//                            "let avg_sum_3 = for(zip(v0, v1, v3), dictmerger[{i64,i64}, {f64, f64}, +], |b,i,n| " +
+//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
+//                            "merge(b, {{m.$0, m.$1}, {m.$2, 1.0}})));" +
+//                            "let avg_3 = result(for(tovec(result(avg_sum_3)), appender[f64], |b, i, n| merge(b, f64(n.$1.$0) / f64(n.$1.$1))));" +
+//                            "{k0, k1, sum_2, avg_3}");
+
+                    for (String code : codes) {
+                        compileID.add(omniRuntime.compile(code));
+                    }
+                    log.info("omni compile time: %s",System.currentTimeMillis()-start);
+                    return new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, omniRuntime, compileID);
                 }
                 return new HashAggregationOperatorFactory(
                         context.getNextOperatorId(),

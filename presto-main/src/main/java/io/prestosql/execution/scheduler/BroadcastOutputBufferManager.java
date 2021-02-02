@@ -14,6 +14,7 @@
 package io.prestosql.execution.scheduler;
 
 import io.prestosql.execution.buffer.OutputBuffers;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
@@ -42,7 +43,7 @@ class BroadcastOutputBufferManager
     }
 
     @Override
-    public void addOutputBuffers(List<String> newBuffers, boolean noMoreBuffers)
+    public void addOutputBuffers(List<OutputBufferId> newBuffers, boolean noMoreBuffers)
     {
         OutputBuffers newOutputBuffers;
         synchronized (this) {
@@ -55,7 +56,7 @@ class BroadcastOutputBufferManager
             OutputBuffers originalOutputBuffers = outputBuffers;
 
             // Note: it does not matter which partition id the task is using, in broadcast all tasks read from the same partition
-            for (String newBuffer : newBuffers) {
+            for (OutputBufferId newBuffer : newBuffers) {
                 outputBuffers = outputBuffers.withBuffer(newBuffer, BROADCAST_PARTITION_ID);
             }
 

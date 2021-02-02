@@ -164,7 +164,6 @@ public class HttpRemoteTaskFactory
                 taskUpdateRequestCodec,
                 partitionedSplitCountTracker,
                 stats,
-                isBinaryEncoding,
-                node.getStreamPort());
+                isBinaryEncoding);
     }
 }

@@ -21,21 +21,20 @@ import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffers;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.LocalMemoryManager;
 import io.prestosql.memory.NodeMemoryConfig;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.metadata.InternalNode;
+import io.prestosql.operator.ExchangeClient;
 import io.prestosql.operator.ExchangeClientSupplier;
-import io.prestosql.operator.HttpExchangeClient;
 import io.prestosql.spi.QueryId;
 import io.prestosql.spiller.LocalSpillManager;
 import io.prestosql.spiller.NodeSpillConfig;
-import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
@@ -63,7 +62,7 @@ import static org.testng.Assert.assertNull;
 public class TestSqlTaskManager
 {
     private static final TaskId TASK_ID = new TaskId("query", 0, 1);
-    public static final String OUT = String.valueOf(0);
+    public static final OutputBufferId OUT = new OutputBufferId(0);
 
     private final TaskExecutor taskExecutor;
     private final TaskManagementExecutor taskManagementExecutor;
@@ -244,7 +243,6 @@ public class TestSqlTaskManager
                 taskManagementExecutor,
                 config,
                 new NodeMemoryConfig(),
-                new ShuffleServiceConfig(),
                 localSpillManager,
                 new NodeSpillConfig(),
                 new TestingGcMonitor(),
@@ -277,7 +275,7 @@ public class TestSqlTaskManager
             implements ExchangeClientSupplier
     {
         @Override
-        public HttpExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
+        public ExchangeClient get(LocalMemoryContext systemMemoryContext)
         {
             throw new UnsupportedOperationException();
         }

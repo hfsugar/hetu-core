@@ -27,5 +27,5 @@ public interface SourceOperator
 
     Supplier<Optional<UpdatablePageSource>> addSplit(Split split);
 
-    void setNoMoreSplits();
+    void noMoreSplits();
 }

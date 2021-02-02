@@ -17,7 +17,6 @@ package io.prestosql.execution;
 import com.google.common.collect.ImmutableList;
 import io.prestosql.Session;
 import io.prestosql.connector.CatalogName;
-import io.prestosql.execution.ddl.CreateTableTask;
 import io.prestosql.metadata.AbstractMockMetadata;
 import io.prestosql.metadata.Catalog;
 import io.prestosql.metadata.CatalogManager;

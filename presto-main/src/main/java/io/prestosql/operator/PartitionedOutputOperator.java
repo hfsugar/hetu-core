@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
+import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.spi.Page;
@@ -29,7 +30,6 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
-import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +39,7 @@ import java.util.function.Function;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.prestosql.execution.buffer.PageSplitterUtil.splitPage;
 import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -54,7 +55,6 @@ public class PartitionedOutputOperator
         private final List<Integer> partitionChannels;
         private final List<Optional<NullableValue>> partitionConstants;
         private final OutputBuffer outputBuffer;
-        private final List<PageProducer> pageProducers;
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final DataSize maxMemory;
@@ -66,7 +66,6 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<PageProducer> pageProducers,
                 DataSize maxMemory)
         {
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
@@ -75,7 +74,6 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
 
@@ -84,21 +82,20 @@ public class PartitionedOutputOperator
                 int operatorId,
                 PlanNodeId planNodeId,
                 List<Type> types,
-                Function<Page, Page> pageLayoutProcessor,
+                Function<Page, Page> pagePreprocessor,
                 PagesSerdeFactory serdeFactory)
         {
             return new PartitionedOutputOperatorFactory(
                     operatorId,
                     planNodeId,
                     types,
-                    pageLayoutProcessor,
+                    pagePreprocessor,
                     partitionFunction,
                     partitionChannels,
                     partitionConstants,
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }
@@ -117,7 +114,6 @@ public class PartitionedOutputOperator
         private final boolean replicatesAnyRow;
         private final OptionalInt nullChannel;
         private final OutputBuffer outputBuffer;
-        private final List<PageProducer> pageProducers;
         private final PagesSerdeFactory serdeFactory;
         private final DataSize maxMemory;
 
@@ -132,7 +128,6 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<PageProducer> pageProducers,
                 PagesSerdeFactory serdeFactory,
                 DataSize maxMemory)
         {
@@ -146,7 +141,6 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
             this.maxMemory = requireNonNull(maxMemory, "maxMemory is null");
         }
@@ -165,7 +159,6 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }
@@ -189,7 +182,6 @@ public class PartitionedOutputOperator
                     replicatesAnyRow,
                     nullChannel,
                     outputBuffer,
-                    pageProducers,
                     serdeFactory,
                     maxMemory);
         }
@@ -212,13 +204,11 @@ public class PartitionedOutputOperator
             boolean replicatesAnyRow,
             OptionalInt nullChannel,
             OutputBuffer outputBuffer,
-            List<PageProducer> pageProducers,
             PagesSerdeFactory serdeFactory,
             DataSize maxMemory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-
         this.partitionFunction = new PagePartitioner(
                 partitionFunction,
                 partitionChannels,
@@ -226,7 +216,6 @@ public class PartitionedOutputOperator
                 replicatesAnyRow,
                 nullChannel,
                 outputBuffer,
-                pageProducers,
                 serdeFactory,
                 sourceTypes,
                 maxMemory);
@@ -306,7 +295,6 @@ public class PartitionedOutputOperator
     private static class PagePartitioner
     {
         private final OutputBuffer outputBuffer;
-        private final List<PageProducer> pageProducers;
         private final List<Type> sourceTypes;
         private final PartitionFunction partitionFunction;
         private final List<Integer> partitionChannels;
@@ -326,7 +314,6 @@ public class PartitionedOutputOperator
                 boolean replicatesAnyRow,
                 OptionalInt nullChannel,
                 OutputBuffer outputBuffer,
-                List<PageProducer> pageProducers,
                 PagesSerdeFactory serdeFactory,
                 List<Type> sourceTypes,
                 DataSize maxMemory)
@@ -339,7 +326,6 @@ public class PartitionedOutputOperator
             this.replicatesAnyRow = replicatesAnyRow;
             this.nullChannel = requireNonNull(nullChannel, "nullChannel is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
             this.sourceTypes = requireNonNull(sourceTypes, "sourceTypes is null");
             this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
 
@@ -442,20 +428,13 @@ public class PartitionedOutputOperator
                     Page pagePartition = partitionPageBuilder.build();
                     partitionPageBuilder.reset();
 
-                    try {
-                        // TODO: choose based on configurations
-                        if (false) {
-                            outputBuffer.enqueue(partition, pagePartition);
-                        }
-                        else {
-                            pageProducers.get(partition).send(pagePartition);
-                        }
-                        pagesAdded.incrementAndGet();
-                        rowsAdded.addAndGet(pagePartition.getPositionCount());
-                    }
-                    catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+                    List<SerializedPage> serializedPages = splitPage(pagePartition, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
+                            .map(serde::serialize)
+                            .collect(toImmutableList());
+
+                    outputBuffer.enqueue(partition, serializedPages);
+                    pagesAdded.incrementAndGet();
+                    rowsAdded.addAndGet(pagePartition.getPositionCount());
                 }
             }
         }

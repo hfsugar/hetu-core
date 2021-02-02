@@ -23,14 +23,13 @@ import io.airlift.log.Logger;
 import io.airlift.stats.CounterStat;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
-import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.Session;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.LazyOutputBuffer;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.execution.buffer.OutputBuffers;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.QueryContext;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.operator.PipelineContext;
@@ -60,7 +59,6 @@ import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static io.airlift.units.DataSize.succinctBytes;
-import static io.prestosql.SystemSessionProperties.isExchangeCompressionEnabled;
 import static io.prestosql.connector.DataCenterUtility.loadDCCatalogForUpdateTask;
 import static io.prestosql.execution.TaskState.ABORTED;
 import static io.prestosql.execution.TaskState.FAILED;
@@ -73,9 +71,9 @@ public class SqlTask
     private static final Logger log = Logger.get(SqlTask.class);
 
     private final TaskId taskId;
-    private final java.lang.String taskInstanceId;
+    private final String taskInstanceId;
     private final URI location;
-    private final java.lang.String nodeId;
+    private final String nodeId;
     private final TaskStateMachine taskStateMachine;
     private final OutputBuffer outputBuffer;
     private final QueryContext queryContext;
@@ -88,22 +86,20 @@ public class SqlTask
     private final AtomicReference<TaskHolder> taskHolderReference = new AtomicReference<>(new TaskHolder());
     private final AtomicBoolean needsPlan = new AtomicBoolean(true);
     private final Metadata metadata;
-    private final int shuffleServicePort;
 
     public static SqlTask createSqlTask(
             TaskId taskId,
             URI location,
-            java.lang.String nodeId,
+            String nodeId,
             QueryContext queryContext,
             SqlTaskExecutionFactory sqlTaskExecutionFactory,
             ExecutorService taskNotificationExecutor,
             Function<SqlTask, ?> onDone,
             DataSize maxBufferSize,
             CounterStat failedTasks,
-            Metadata metadata,
-            int shuffleServicePort)
+            Metadata metadata)
     {
-        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, metadata, shuffleServicePort);
+        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, metadata);
         sqlTask.initialize(onDone, failedTasks);
         return sqlTask;
     }
@@ -116,8 +112,7 @@ public class SqlTask
             SqlTaskExecutionFactory sqlTaskExecutionFactory,
             ExecutorService taskNotificationExecutor,
             DataSize maxBufferSize,
-            Metadata metadata,
-            int shuffleServicePort)
+            Metadata metadata)
     {
         this.taskId = requireNonNull(taskId, "taskId is null");
         this.taskInstanceId = UUID.randomUUID().toString();
@@ -126,7 +121,6 @@ public class SqlTask
         this.queryContext = requireNonNull(queryContext, "queryContext is null");
         this.sqlTaskExecutionFactory = requireNonNull(sqlTaskExecutionFactory, "sqlTaskExecutionFactory is null");
         this.metadata = requireNonNull(metadata, "requireNonNull is null");
-        this.shuffleServicePort = shuffleServicePort;
         requireNonNull(taskNotificationExecutor, "taskNotificationExecutor is null");
         requireNonNull(maxBufferSize, "maxBufferSize is null");
 
@@ -208,7 +202,7 @@ public class SqlTask
         return taskStateMachine.getTaskId();
     }
 
-    public java.lang.String getTaskInstanceId()
+    public String getTaskInstanceId()
     {
         return taskInstanceId;
     }
@@ -299,8 +293,7 @@ public class SqlTask
                 systemMemoryReservation,
                 revocableMemoryReservation,
                 fullGcCount,
-                fullGcTime,
-                shuffleServicePort);
+                fullGcTime);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)
@@ -374,22 +367,13 @@ public class SqlTask
         return Futures.transform(futureTaskState, input -> getTaskInfo(), directExecutor());
     }
 
-    private PagesSerde serde;
-
     public TaskInfo updateTask(Session session, Optional<PlanFragment> fragment, List<TaskSource> sources, OutputBuffers outputBuffers, OptionalInt totalPartitions)
     {
         try {
-            //FIXEME: KEN: this is a hack, the Serde information should be complete transparent and handled inside of the OutputBuffers/OutputOperators
-            if (serde == null) {
-                serde = new PagesSerdeFactory(metadata.getBlockEncodingSerde(), isExchangeCompressionEnabled(session)).createPagesSerde();
-            }
-
             // The LazyOutput buffer does not support write methods, so the actual
             // output buffer must be established before drivers are created (e.g.
             // a VALUES query).
-
-            log.info("Task: " + this.taskId.toString() + ", OutputBuffers: " + outputBuffers.getType() + ", " + outputBuffers.getBuffers() + ", no more buffers: " + outputBuffers.isNoMoreBufferIds());
-            outputBuffer.setOutputBuffers(outputBuffers, serde);
+            outputBuffer.setOutputBuffers(outputBuffers);
 
             // assure the task execution is only created once
             SqlTaskExecution taskExecution;
@@ -403,7 +387,7 @@ public class SqlTask
                 if (taskExecution == null) {
                     checkState(fragment.isPresent(), "fragment must be present");
                     loadDCCatalogForUpdateTask(metadata, sources);
-                    taskExecution = sqlTaskExecutionFactory.create(session, queryContext, taskStateMachine, outputBuffer, fragment.get(), sources, totalPartitions, serde, outputBuffers);
+                    taskExecution = sqlTaskExecutionFactory.create(session, queryContext, taskStateMachine, outputBuffer, fragment.get(), sources, totalPartitions);
                     taskHolderReference.compareAndSet(taskHolder, new TaskHolder(taskExecution));
                     needsPlan.set(false);
                 }
@@ -411,7 +395,6 @@ public class SqlTask
 
             if (taskExecution != null) {
                 taskExecution.addSources(sources);
-                taskExecution.updatePageProducers(outputBuffers);
             }
         }
         catch (Error e) {
@@ -425,7 +408,7 @@ public class SqlTask
         return getTaskInfo();
     }
 
-    public ListenableFuture<BufferResult> getTaskResults(String bufferId, long startingSequenceId, DataSize maxSize)
+    public ListenableFuture<BufferResult> getTaskResults(OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
     {
         requireNonNull(bufferId, "bufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
@@ -433,14 +416,14 @@ public class SqlTask
         return outputBuffer.get(bufferId, startingSequenceId, maxSize);
     }
 
-    public void acknowledgeTaskResults(String bufferId, long sequenceId)
+    public void acknowledgeTaskResults(OutputBufferId bufferId, long sequenceId)
     {
         requireNonNull(bufferId, "bufferId is null");
 
         outputBuffer.acknowledge(bufferId, sequenceId);
     }
 
-    public TaskInfo abortTaskResults(String bufferId)
+    public TaskInfo abortTaskResults(OutputBufferId bufferId)
     {
         requireNonNull(bufferId, "bufferId is null");
 
@@ -470,7 +453,7 @@ public class SqlTask
     }
 
     @Override
-    public java.lang.String toString()
+    public String toString()
     {
         return taskId.toString();
     }

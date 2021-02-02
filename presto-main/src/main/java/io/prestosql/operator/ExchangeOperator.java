@@ -14,7 +14,9 @@
 package io.prestosql.operator;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
+import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.connector.CatalogName;
 import io.prestosql.metadata.Split;
 import io.prestosql.spi.Page;
@@ -70,12 +72,13 @@ public class ExchangeOperator
             checkState(!closed, "Factory is already closed");
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
             if (exchangeClient == null) {
-                exchangeClient = exchangeClientSupplier.get(driverContext.getPipelineContext().localSystemMemoryContext(), serdeFactory.createPagesSerde());
+                exchangeClient = exchangeClientSupplier.get(driverContext.getPipelineContext().localSystemMemoryContext());
             }
 
             return new ExchangeOperator(
                     operatorContext,
                     sourceId,
+                    serdeFactory.createPagesSerde(),
                     exchangeClient);
         }
 
@@ -89,17 +92,20 @@ public class ExchangeOperator
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
     private final ExchangeClient exchangeClient;
+    private final PagesSerde serde;
 
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
+            PagesSerde serde,
             ExchangeClient exchangeClient)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.sourceId = requireNonNull(sourceId, "sourceId is null");
         this.exchangeClient = requireNonNull(exchangeClient, "exchangeClient is null");
+        this.serde = requireNonNull(serde, "serde is null");
 
-        operatorContext.setInfoSupplier(exchangeClient::getStatistics);
+        operatorContext.setInfoSupplier(exchangeClient::getStatus);
     }
 
     @Override
@@ -121,9 +127,9 @@ public class ExchangeOperator
     }
 
     @Override
-    public void setNoMoreSplits()
+    public void noMoreSplits()
     {
-        exchangeClient.setNoMoreLocation();
+        exchangeClient.noMoreLocations();
     }
 
     @Override
@@ -169,16 +175,17 @@ public class ExchangeOperator
     @Override
     public Page getOutput()
     {
-        Page page = exchangeClient.pollPage();
+        SerializedPage page = exchangeClient.pollPage();
         if (page == null) {
             return null;
         }
 
         operatorContext.recordNetworkInput(page.getSizeInBytes(), page.getPositionCount());
 
-        operatorContext.recordProcessedInput(page.getSizeInBytes(), page.getPositionCount());
+        Page deserializedPage = serde.deserialize(page);
+        operatorContext.recordProcessedInput(deserializedPage.getSizeInBytes(), page.getPositionCount());
 
-        return page;
+        return deserializedPage;
     }
 
     @Override

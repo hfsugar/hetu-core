@@ -307,7 +307,6 @@ public class TestMemoryRevokingScheduler
                 Functions.identity(),
                 new DataSize(32, MEGABYTE),
                 new CounterStat(),
-                new EmptyMockMetadata(),
-                0);
+                new EmptyMockMetadata());
     }
 }

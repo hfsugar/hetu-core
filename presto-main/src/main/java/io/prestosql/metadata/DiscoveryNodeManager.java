@@ -131,7 +131,7 @@ public final class DiscoveryNodeManager
             URI uri = getHttpUri(service, httpsRequired);
             NodeVersion nodeVersion = getNodeVersion(service);
             if (uri != null && nodeVersion != null) {
-                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, isCoordinator(service), getShuffleServicePort(service));
+                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, isCoordinator(service));
 
                 if (node.getNodeIdentifier().equals(currentNodeId)) {
                     checkState(
@@ -240,7 +240,7 @@ public final class DiscoveryNodeManager
             NodeVersion nodeVersion = getNodeVersion(service);
             boolean coordinator = isCoordinator(service);
             if (uri != null && nodeVersion != null) {
-                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, coordinator, getShuffleServicePort(service));
+                InternalNode node = new InternalNode(service.getNodeId(), uri, nodeVersion, coordinator);
                 NodeState nodeState = getNodeState(node);
 
                 switch (nodeState) {
@@ -436,14 +436,5 @@ public final class DiscoveryNodeManager
     private static boolean isCoordinator(ServiceDescriptor service)
     {
         return Boolean.parseBoolean(service.getProperties().get("coordinator"));
-    }
-
-    private static int getShuffleServicePort(ServiceDescriptor serviceDescriptor)
-    {
-        String shuffleServicePortValue = serviceDescriptor.getProperties().get("shuffleServicePort");
-        if (shuffleServicePortValue == null) {
-            throw new IllegalArgumentException("Shuffle service port is not configured");
-        }
-        return Integer.parseInt(shuffleServicePortValue);
     }
 }

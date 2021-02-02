@@ -15,6 +15,7 @@ package io.prestosql.spi.block;
 
 import io.airlift.slice.Slice;
 import io.prestosql.spi.util.BloomFilter;
+import nova.hetu.omnicache.vector.Vec;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.util.function.BiConsumer;
@@ -25,7 +26,7 @@ import static io.prestosql.spi.block.DictionaryId.randomDictionaryId;
 
 public interface Block<T>
 {
-    default Object getValuesVec()
+    default Vec<?> getValues()
     {
         throw new UnsupportedOperationException();
     }
@@ -64,6 +65,14 @@ public interface Block<T>
      * Gets a little endian int at {@code offset} in the value at {@code position}.
      */
     default int getInt(int position, int offset)
+    {
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+
+    /**
+     * Gets a little endian double at {@code offset} in the value at {@code position}.
+     */
+    default double getDouble(int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }

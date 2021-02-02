@@ -31,6 +31,7 @@ import io.prestosql.execution.SqlStageExecution;
 import io.prestosql.execution.StageId;
 import io.prestosql.execution.TableInfo;
 import io.prestosql.execution.TestSqlTaskManager.MockLocationFactory;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.failuredetector.NoOpFailureDetector;
 import io.prestosql.filesystem.FileSystemClientManager;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;
@@ -102,7 +103,7 @@ import static org.testng.Assert.assertTrue;
 
 public class TestSourcePartitionedScheduler
 {
-    public static final String OUT = String.valueOf(0);
+    public static final OutputBufferId OUT = new OutputBufferId(0);
     private static final CatalogName CONNECTOR_ID = TEST_TABLE_HANDLE.getCatalogName();
 
     private final ExecutorService queryExecutor = newCachedThreadPool(daemonThreadsNamed("stageExecutor-%s"));

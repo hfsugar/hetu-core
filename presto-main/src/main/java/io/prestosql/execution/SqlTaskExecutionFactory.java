@@ -14,11 +14,9 @@
 package io.prestosql.execution;
 
 import io.airlift.concurrent.SetThreadName;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.Session;
 import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.buffer.OutputBuffer;
-import io.prestosql.execution.buffer.OutputBuffers;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.QueryContext;
 import io.prestosql.operator.TaskContext;
@@ -26,20 +24,14 @@ import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
-import nova.hetu.shuffle.PageProducer;
-import nova.hetu.shuffle.stream.Stream;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.concurrent.Executor;
 
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static io.prestosql.execution.SqlTaskExecution.createSqlTaskExecution;
-import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
-import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static java.util.Objects.requireNonNull;
-import static nova.hetu.shuffle.stream.Stream.Type.BASIC;
 
 public class SqlTaskExecutionFactory
 {
@@ -68,7 +60,7 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers outputBuffers)
+    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
     {
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
@@ -76,7 +68,6 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
-        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers);
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -88,8 +79,7 @@ public class SqlTaskExecutionFactory
                         fragment.getPartitioningScheme(),
                         fragment.getStageExecutionDescriptor(),
                         fragment.getPartitionedSources(),
-                        outputBuffer,
-                        producers);
+                        outputBuffer);
             }
             catch (Throwable e) {
                 // planning failed
@@ -102,35 +92,10 @@ public class SqlTaskExecutionFactory
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
-                producers,
                 sources,
                 localExecutionPlan,
                 taskExecutor,
                 taskNotificationExecutor,
                 splitMonitor);
-    }
-
-    private List<PageProducer> createProducers(TaskId taskId, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers outputBuffers)
-    {
-        OutputBuffers.BufferType type = outputBuffers.getType();
-        List<PageProducer> producers = new ArrayList<>();
-        if (type == PARTITIONED) {
-            outputBuffers.getBuffers().keySet().stream().sorted().forEach(partition -> {
-                producers.add(new PageProducer(getProducerId(taskId.toString(), Integer.parseInt(partition)), pagesSerde, BASIC));
-            });
-        }
-        else if (type == BROADCAST) {
-            producers.add(new PageProducer(taskId.toString(), pagesSerde, Stream.Type.BROADCAST));
-        }
-        else {
-            producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
-        }
-
-        return producers;
-    }
-
-    private static String getProducerId(String taskId, int partitionId)
-    {
-        return String.format("%s-%d", taskId, partitionId);
     }
 }

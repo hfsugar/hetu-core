@@ -22,8 +22,6 @@ import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
-import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.Session;
 import io.prestosql.datacenter.DataCenterStatementResource;
 import io.prestosql.dispatcher.DispatchManager;
@@ -63,7 +61,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static io.prestosql.SystemSessionProperties.isExchangeCompressionEnabled;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
@@ -259,10 +256,9 @@ public class AutoVacuumScanner
             return null;
         }
 
-        final PagesSerde pagesSerde = new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)).createPagesSerde();
         ExchangeClient exchangeClient = this.exchangeClientSupplier.get(
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(),
-                        DataCenterStatementResource.class.getSimpleName()), pagesSerde);
+                        DataCenterStatementResource.class.getSimpleName()));
         return Query.create(session, slug, queryManager, exchangeClient, directExecutor(), timeoutExecutor,
                 blockEncodingSerde);
     }

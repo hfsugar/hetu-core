@@ -13,9 +13,11 @@
  */
 package io.prestosql.execution.scheduler;
 
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
+
 import java.util.List;
 
 interface OutputBufferManager
 {
-    void addOutputBuffers(List<String> newBuffers, boolean noMoreBuffers);
+    void addOutputBuffers(List<OutputBufferId> newBuffers, boolean noMoreBuffers);
 }

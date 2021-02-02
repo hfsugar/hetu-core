@@ -17,7 +17,7 @@ import com.google.common.collect.ImmutableMap;
 import io.prestosql.Session;
 import io.prestosql.cost.CostCalculator;
 import io.prestosql.cost.StatsCalculator;
-import io.prestosql.execution.ddl.DataDefinitionTask;
+import io.prestosql.execution.DataDefinitionTask;
 import io.prestosql.execution.warnings.WarningCollector;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;
 import io.prestosql.metadata.Metadata;

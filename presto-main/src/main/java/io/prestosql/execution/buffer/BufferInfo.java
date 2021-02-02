@@ -15,6 +15,7 @@ package io.prestosql.execution.buffer;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 
 import java.util.Objects;
 
@@ -24,7 +25,7 @@ import static java.util.Objects.requireNonNull;
 
 public class BufferInfo
 {
-    private final String bufferId;
+    private final OutputBufferId bufferId;
     private final boolean finished;
     private final int bufferedPages;
 
@@ -33,7 +34,7 @@ public class BufferInfo
 
     @JsonCreator
     public BufferInfo(
-            @JsonProperty("bufferId") String bufferId,
+            @JsonProperty("bufferId") OutputBufferId bufferId,
             @JsonProperty("finished") boolean finished,
             @JsonProperty("bufferedPages") int bufferedPages,
             @JsonProperty("pagesSent") long pagesSent,
@@ -50,7 +51,7 @@ public class BufferInfo
     }
 
     @JsonProperty
-    public String getBufferId()
+    public OutputBufferId getBufferId()
     {
         return bufferId;
     }
@@ -103,7 +104,7 @@ public class BufferInfo
     }
 
     @Override
-    public java.lang.String toString()
+    public String toString()
     {
         return toStringHelper(this)
                 .add("bufferId", bufferId)

@@ -13,11 +13,13 @@
  */
 package io.prestosql.execution.buffer;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.block.BlockAssertions;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.operator.PageAssertions;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
@@ -66,7 +68,7 @@ public final class BufferTestUtils
         assertEquals(actual.isBufferComplete(), expected.isBufferComplete(), "buffer complete");
     }
 
-    static BufferResult createBufferResult(java.lang.String bufferId, long token, List<Page> pages)
+    static BufferResult createBufferResult(String bufferId, long token, List<Page> pages)
     {
         checkArgument(!pages.isEmpty(), "pages is empty");
         return new BufferResult(
@@ -89,21 +91,21 @@ public final class BufferTestUtils
         return new DataSize(BUFFERED_PAGE_SIZE.toBytes() * count, BYTE);
     }
 
-    static BufferResult getBufferResult(OutputBuffer buffer, String bufferId, long sequenceId, DataSize maxSize, Duration maxWait)
+    static BufferResult getBufferResult(OutputBuffer buffer, OutputBufferId bufferId, long sequenceId, DataSize maxSize, Duration maxWait)
     {
         ListenableFuture<BufferResult> future = buffer.get(bufferId, sequenceId, maxSize);
         return getFuture(future, maxWait);
     }
 
     // TODO: remove this after PR is landed: https://github.com/prestodb/presto/pull/7987
-    static void acknowledgeBufferResult(OutputBuffer buffer, String bufferId, long sequenceId)
+    static void acknowledgeBufferResult(OutputBuffer buffer, OutputBuffers.OutputBufferId bufferId, long sequenceId)
     {
         buffer.acknowledge(bufferId, sequenceId);
     }
 
     static ListenableFuture<?> enqueuePage(OutputBuffer buffer, Page page)
     {
-        buffer.enqueue(page);
+        buffer.enqueue(ImmutableList.of(PAGES_SERDE.serialize(page)));
         ListenableFuture<?> future = buffer.isFull();
         assertFalse(future.isDone());
         return future;
@@ -111,7 +113,7 @@ public final class BufferTestUtils
 
     static ListenableFuture<?> enqueuePage(OutputBuffer buffer, Page page, int partition)
     {
-        buffer.enqueue(partition, page);
+        buffer.enqueue(partition, ImmutableList.of(PAGES_SERDE.serialize(page)));
         ListenableFuture<?> future = buffer.isFull();
         assertFalse(future.isDone());
         return future;
@@ -119,19 +121,19 @@ public final class BufferTestUtils
 
     public static void addPage(OutputBuffer buffer, Page page)
     {
-        buffer.enqueue(page);
+        buffer.enqueue(ImmutableList.of(PAGES_SERDE.serialize(page)));
         assertTrue(buffer.isFull().isDone(), "Expected add page to not block");
     }
 
     public static void addPage(OutputBuffer buffer, Page page, int partition)
     {
-        buffer.enqueue(partition, page);
+        buffer.enqueue(partition, ImmutableList.of(PAGES_SERDE.serialize(page)));
         assertTrue(buffer.isFull().isDone(), "Expected add page to not block");
     }
 
     static void assertQueueState(
             OutputBuffer buffer,
-            String bufferId,
+            OutputBuffers.OutputBufferId bufferId,
             int bufferedPages,
             int pagesSent)
     {
@@ -143,7 +145,7 @@ public final class BufferTestUtils
                         bufferedPages,
                         pagesSent,
                         new PageBufferInfo(
-                                Integer.valueOf(bufferId),
+                                bufferId.getId(),
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
@@ -153,11 +155,11 @@ public final class BufferTestUtils
     static void assertQueueState(
             OutputBuffer buffer,
             int unassignedPages,
-            String bufferId,
+            OutputBuffers.OutputBufferId bufferId,
             int bufferedPages,
             int pagesSent)
     {
-        OutputBufferStatistics outputBufferInfo = buffer.getInfo();
+        OutputBufferInfo outputBufferInfo = buffer.getInfo();
 
         long assignedPages = outputBufferInfo.getBuffers().stream().mapToInt(BufferInfo::getBufferedPages).sum();
 
@@ -179,7 +181,7 @@ public final class BufferTestUtils
                         bufferedPages,
                         pagesSent,
                         new PageBufferInfo(
-                                Integer.valueOf(bufferId),
+                                bufferId.getId(),
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
@@ -187,7 +189,7 @@ public final class BufferTestUtils
     }
 
     @SuppressWarnings("ConstantConditions")
-    static void assertQueueClosed(OutputBuffer buffer, String bufferId, int pagesSent)
+    static void assertQueueClosed(OutputBuffer buffer, OutputBuffers.OutputBufferId bufferId, int pagesSent)
     {
         BufferInfo bufferInfo = getBufferInfo(buffer, bufferId);
         assertEquals(bufferInfo.getBufferedPages(), 0);
@@ -196,9 +198,9 @@ public final class BufferTestUtils
     }
 
     @SuppressWarnings("ConstantConditions")
-    static void assertQueueClosed(OutputBuffer buffer, int unassignedPages, String bufferId, int pagesSent)
+    static void assertQueueClosed(OutputBuffer buffer, int unassignedPages, OutputBuffers.OutputBufferId bufferId, int pagesSent)
     {
-        OutputBufferStatistics outputBufferInfo = buffer.getInfo();
+        OutputBufferInfo outputBufferInfo = buffer.getInfo();
 
         long assignedPages = outputBufferInfo.getBuffers().stream().mapToInt(BufferInfo::getBufferedPages).sum();
         assertEquals(
@@ -231,7 +233,7 @@ public final class BufferTestUtils
         assertTrue(future.isDone());
     }
 
-    private static BufferInfo getBufferInfo(OutputBuffer buffer, String bufferId)
+    private static BufferInfo getBufferInfo(OutputBuffer buffer, OutputBuffers.OutputBufferId bufferId)
     {
         for (BufferInfo bufferInfo : buffer.getInfo().getBuffers()) {
             if (bufferInfo.getBufferId().equals(bufferId)) {

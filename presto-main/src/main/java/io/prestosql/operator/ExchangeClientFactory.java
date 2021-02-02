@@ -17,7 +17,6 @@ import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.http.client.HttpClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.memory.context.LocalMemoryContext;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
@@ -111,12 +110,9 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
+    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
     {
-        if (true /** grpc.enabled */) {
-            return new StreamingExchangeClient(pagesSerde);
-        }
-        return new HttpExchangeClient(
+        return new ExchangeClient(
                 maxBufferedBytes,
                 maxResponseSize,
                 concurrentRequestMultiplier,
@@ -125,7 +121,6 @@ public class ExchangeClientFactory
                 httpClient,
                 scheduler,
                 systemMemoryContext,
-                pageBufferClientCallbackExecutor,
-                pagesSerde);
+                pageBufferClientCallbackExecutor);
     }
 }

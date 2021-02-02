@@ -205,10 +205,6 @@
                     <artifactId>plexus-classworlds</artifactId>
                     <groupId>org.codehaus.plexus</groupId>
                 </exclusion>
-                <exclusion>
-                    <groupId>com.google.protobuf</groupId>
-                    <artifactId>protobuf-java</artifactId>
-                </exclusion>
             </exclusions>
         </dependency>
 

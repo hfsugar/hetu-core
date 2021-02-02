@@ -83,7 +83,7 @@ public class TestExchangeOperator
         pageBufferClientCallbackExecutor = Executors.newSingleThreadExecutor();
         httpClient = new TestingHttpClient(new TestingExchangeHttpClientHandler(taskBuffers), scheduler);
 
-        exchangeClientSupplier = (systemMemoryUsageListener, pagesSerde) -> new HttpExchangeClient(
+        exchangeClientSupplier = (systemMemoryUsageListener) -> new ExchangeClient(
                 new DataSize(32, MEGABYTE),
                 new DataSize(10, MEGABYTE),
                 3,
@@ -92,7 +92,7 @@ public class TestExchangeOperator
                 httpClient,
                 scheduler,
                 systemMemoryUsageListener,
-                pageBufferClientCallbackExecutor, pagesSerde);
+                pageBufferClientCallbackExecutor);
     }
 
     @AfterClass(alwaysRun = true)
@@ -126,7 +126,7 @@ public class TestExchangeOperator
         operator.addSplit(newRemoteSplit(TASK_1_ID));
         operator.addSplit(newRemoteSplit(TASK_2_ID));
         operator.addSplit(newRemoteSplit(TASK_3_ID));
-        operator.setNoMoreSplits();
+        operator.noMoreSplits();
 
         // add pages and close the buffers
         taskBuffers.getUnchecked(TASK_1_ID).addPages(10, true);
@@ -154,7 +154,7 @@ public class TestExchangeOperator
         operator.addSplit(newRemoteSplit(TASK_1_ID));
         operator.addSplit(newRemoteSplit(TASK_2_ID));
         operator.addSplit(newRemoteSplit(TASK_3_ID));
-        operator.setNoMoreSplits();
+        operator.noMoreSplits();
 
         // add pages and leave buffers open
         taskBuffers.getUnchecked(TASK_1_ID).addPages(1, false);
@@ -203,7 +203,7 @@ public class TestExchangeOperator
         // add a buffer location
         operator.addSplit(newRemoteSplit(TASK_2_ID));
         // set no more splits (buffer locations)
-        operator.setNoMoreSplits();
+        operator.noMoreSplits();
         // add two pages and close the last buffer
         taskBuffers.getUnchecked(TASK_2_ID).addPages(2, true);
 
@@ -223,7 +223,7 @@ public class TestExchangeOperator
         operator.addSplit(newRemoteSplit(TASK_1_ID));
         operator.addSplit(newRemoteSplit(TASK_2_ID));
         operator.addSplit(newRemoteSplit(TASK_3_ID));
-        operator.setNoMoreSplits();
+        operator.noMoreSplits();
 
         // add pages and leave buffers open
         taskBuffers.getUnchecked(TASK_1_ID).addPages(1, false);

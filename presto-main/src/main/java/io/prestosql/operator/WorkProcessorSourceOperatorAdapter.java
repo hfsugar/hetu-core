@@ -153,7 +153,7 @@ public class WorkProcessorSourceOperatorAdapter
     }
 
     @Override
-    public void setNoMoreSplits()
+    public void noMoreSplits()
     {
         splitBuffer.noMoreSplits();
     }
@@ -259,7 +259,7 @@ public class WorkProcessorSourceOperatorAdapter
     public void finish()
     {
         operatorFinishing = true;
-        setNoMoreSplits();
+        noMoreSplits();
     }
 
     @Override

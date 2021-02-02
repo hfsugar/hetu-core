@@ -628,7 +628,7 @@ public class TableScanOperator
     }
 
     @Override
-    public void setNoMoreSplits()
+    public void noMoreSplits()
     {
         if (split == null) {
             finished = true;

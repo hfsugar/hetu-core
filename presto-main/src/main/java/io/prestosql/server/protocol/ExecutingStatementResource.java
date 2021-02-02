@@ -20,8 +20,6 @@ import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
-import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.Session;
 import io.prestosql.client.QueryResults;
 import io.prestosql.client.QueryStatusInfo;
@@ -66,7 +64,6 @@ import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.airlift.jaxrs.AsyncResponseHandler.bindAsyncResponse;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
-import static io.prestosql.SystemSessionProperties.isExchangeCompressionEnabled;
 import static io.prestosql.client.PrestoHeaders.PRESTO_ADDED_PREPARE;
 import static io.prestosql.client.PrestoHeaders.PRESTO_CLEAR_SESSION;
 import static io.prestosql.client.PrestoHeaders.PRESTO_CLEAR_TRANSACTION_ID;
@@ -190,9 +187,8 @@ public class ExecutingStatementResource
             throw badRequest(NOT_FOUND, "Query not found");
         }
 
-        PagesSerde pagesSerde = new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)).createPagesSerde();
         query = queries.computeIfAbsent(queryId, id -> {
-            ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), ExecutingStatementResource.class.getSimpleName()), pagesSerde);
+            ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), ExecutingStatementResource.class.getSimpleName()));
             return Query.create(
                     session,
                     slug,

@@ -138,7 +138,7 @@ public class IndexSourceOperator
     }
 
     @Override
-    public void setNoMoreSplits()
+    public void noMoreSplits()
     {
         if (source == null) {
             source = new FinishedOperator(operatorContext);
@@ -148,7 +148,7 @@ public class IndexSourceOperator
     @Override
     public void finish()
     {
-        setNoMoreSplits();
+        noMoreSplits();
         source.finish();
     }
 

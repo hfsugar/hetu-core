@@ -13,10 +13,9 @@
  */
 package io.prestosql.operator;
 
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.memory.context.LocalMemoryContext;
 
 public interface ExchangeClientSupplier
 {
-    ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde);
+    ExchangeClient get(LocalMemoryContext systemMemoryContext);
 }

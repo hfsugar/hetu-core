@@ -13,15 +13,16 @@
  */
 package io.prestosql.execution.buffer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Sets.SetView;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.StateMachine;
 import io.prestosql.execution.StateMachine.StateChangeListener;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.context.LocalMemoryContext;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -48,29 +50,38 @@ import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
 import static java.util.Objects.requireNonNull;
 
 public class BroadcastOutputBuffer
-        extends OutputBuffer
+        implements OutputBuffer
 {
-    private final java.lang.String taskInstanceId;
+    private final String taskInstanceId;
+    private final StateMachine<BufferState> state;
+    private final OutputBufferMemoryManager memoryManager;
 
     @GuardedBy("this")
     private OutputBuffers outputBuffers = OutputBuffers.createInitialEmptyOutputBuffers(BROADCAST);
 
     @GuardedBy("this")
-    private final Map<String, ClientBuffer> buffers = new ConcurrentHashMap<>();
+    private final Map<OutputBufferId, ClientBuffer> buffers = new ConcurrentHashMap<>();
 
     @GuardedBy("this")
     private final List<SerializedPageReference> initialPagesForNewBuffers = new ArrayList<>();
 
+    private final AtomicLong totalPagesAdded = new AtomicLong();
+    private final AtomicLong totalRowsAdded = new AtomicLong();
+    private final AtomicLong totalBufferedPages = new AtomicLong();
+
     public BroadcastOutputBuffer(
-            java.lang.String taskInstanceId,
+            String taskInstanceId,
             StateMachine<BufferState> state,
             DataSize maxBufferSize,
             Supplier<LocalMemoryContext> systemMemoryContextSupplier,
-            Executor notificationExecutor,
-            PagesSerde serde)
+            Executor notificationExecutor)
     {
-        super(state, maxBufferSize, systemMemoryContextSupplier, notificationExecutor, serde);
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
+        this.state = requireNonNull(state, "state is null");
+        this.memoryManager = new OutputBufferMemoryManager(
+                requireNonNull(maxBufferSize, "maxBufferSize is null").toBytes(),
+                requireNonNull(systemMemoryContextSupplier, "systemMemoryContextSupplier is null"),
+                requireNonNull(notificationExecutor, "notificationExecutor is null"));
     }
 
     @Override
@@ -80,7 +91,25 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public OutputBufferStatistics getInfo()
+    public boolean isFinished()
+    {
+        return state.get() == FINISHED;
+    }
+
+    @Override
+    public double getUtilization()
+    {
+        return memoryManager.getUtilization();
+    }
+
+    @Override
+    public boolean isOverutilized()
+    {
+        return memoryManager.isOverutilized();
+    }
+
+    @Override
+    public OutputBufferInfo getInfo()
     {
         //
         // NOTE: this code must be lock free so we do not hang for state machine updates
@@ -94,7 +123,7 @@ public class BroadcastOutputBuffer
         @SuppressWarnings("FieldAccessNotGuarded")
         Collection<ClientBuffer> buffers = this.buffers.values();
 
-        return new OutputBufferStatistics(
+        return new OutputBufferInfo(
                 "BROADCAST",
                 state,
                 state.canAddBuffers(),
@@ -109,7 +138,7 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public void setOutputBuffers(OutputBuffers newOutputBuffers, PagesSerde serde)
+    public void setOutputBuffers(OutputBuffers newOutputBuffers)
     {
         checkState(!Thread.holdsLock(this), "Can not set output buffers while holding a lock on this");
         requireNonNull(newOutputBuffers, "newOutputBuffers is null");
@@ -127,7 +156,7 @@ public class BroadcastOutputBuffer
             outputBuffers = newOutputBuffers;
 
             // add the new buffers
-            for (Entry<String, Integer> entry : outputBuffers.getBuffers().entrySet()) {
+            for (Entry<OutputBufferId, Integer> entry : outputBuffers.getBuffers().entrySet()) {
                 if (!buffers.containsKey(entry.getKey())) {
                     ClientBuffer buffer = getBuffer(entry.getKey());
                     if (!state.canAddPages()) {
@@ -150,8 +179,34 @@ public class BroadcastOutputBuffer
         checkFlushComplete();
     }
 
-    void doEnqueue(int part, List<SerializedPage> pages)
+    @Override
+    public ListenableFuture<?> isFull()
     {
+        return memoryManager.getBufferBlockedFuture();
+    }
+
+    @Override
+    public void enqueue(List<SerializedPage> pages)
+    {
+        checkState(!Thread.holdsLock(this), "Can not enqueue pages while holding a lock on this");
+        requireNonNull(pages, "pages is null");
+
+        // ignore pages after "no more pages" is set
+        // this can happen with a limit query
+        if (!state.get().canAddPages()) {
+            return;
+        }
+
+        // reserve memory
+        long bytesAdded = pages.stream().mapToLong(SerializedPage::getRetainedSizeInBytes).sum();
+        memoryManager.updateMemoryUsage(bytesAdded);
+
+        // update stats
+        long rowCount = pages.stream().mapToLong(SerializedPage::getPositionCount).sum();
+        totalRowsAdded.addAndGet(rowCount);
+        totalPagesAdded.addAndGet(pages.size());
+        totalBufferedPages.addAndGet(pages.size());
+
         // create page reference counts with an initial single reference
         List<SerializedPageReference> serializedPageReferences = pages.stream()
                 .map(pageSplit -> new SerializedPageReference(pageSplit, 1, () -> {
@@ -180,7 +235,14 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public ListenableFuture<BufferResult> get(String outputBufferId, long startingSequenceId, DataSize maxSize)
+    public void enqueue(int partitionNumber, List<SerializedPage> pages)
+    {
+        checkState(partitionNumber == 0, "Expected partition number to be zero");
+        enqueue(pages);
+    }
+
+    @Override
+    public ListenableFuture<BufferResult> get(OutputBufferId outputBufferId, long startingSequenceId, DataSize maxSize)
     {
         checkState(!Thread.holdsLock(this), "Can not get pages while holding a lock on this");
         requireNonNull(outputBufferId, "outputBufferId is null");
@@ -190,7 +252,7 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public void acknowledge(String bufferId, long sequenceId)
+    public void acknowledge(OutputBufferId bufferId, long sequenceId)
     {
         checkState(!Thread.holdsLock(this), "Can not acknowledge pages while holding a lock on this");
         requireNonNull(bufferId, "bufferId is null");
@@ -199,7 +261,7 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public void abort(String bufferId)
+    public void abort(OutputBufferId bufferId)
     {
         checkState(!Thread.holdsLock(this), "Can not abort while holding a lock on this");
         requireNonNull(bufferId, "bufferId is null");
@@ -249,7 +311,19 @@ public class BroadcastOutputBuffer
         }
     }
 
-    private synchronized ClientBuffer getBuffer(String id)
+    @Override
+    public long getPeakMemoryUsage()
+    {
+        return memoryManager.getPeakMemoryUsage();
+    }
+
+    @VisibleForTesting
+    void forceFreeMemory()
+    {
+        memoryManager.close();
+    }
+
+    private synchronized ClientBuffer getBuffer(OutputBufferId id)
     {
         ClientBuffer buffer = buffers.get(id);
         if (buffer != null) {
@@ -302,7 +376,7 @@ public class BroadcastOutputBuffer
 
             if (outputBuffers.isNoMoreBufferIds()) {
                 // verify all created buffers have been declared
-                SetView<String> undeclaredCreatedBuffers = Sets.difference(buffers.keySet(), outputBuffers.getBuffers().keySet());
+                SetView<OutputBufferId> undeclaredCreatedBuffers = Sets.difference(buffers.keySet(), outputBuffers.getBuffers().keySet());
                 checkState(undeclaredCreatedBuffers.isEmpty(), "Final output buffers does not contain all created buffer ids: %s", undeclaredCreatedBuffers);
             }
         }
@@ -320,5 +394,11 @@ public class BroadcastOutputBuffer
         if (safeGetBuffersSnapshot().stream().allMatch(ClientBuffer::isDestroyed)) {
             destroy();
         }
+    }
+
+    @VisibleForTesting
+    OutputBufferMemoryManager getMemoryManager()
+    {
+        return memoryManager;
     }
 }

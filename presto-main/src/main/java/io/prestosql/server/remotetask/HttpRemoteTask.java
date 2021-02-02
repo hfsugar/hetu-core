@@ -180,8 +180,7 @@ public final class HttpRemoteTask
             Codec<TaskInfo> taskInfoCodec,
             Codec<TaskUpdateRequest> taskUpdateRequestCodec,
             PartitionedSplitCountTracker partitionedSplitCountTracker,
-            RemoteTaskStats stats, boolean isBinaryEncoding,
-            int streamPort)
+            RemoteTaskStats stats, boolean isBinaryEncoding)
     {
         requireNonNull(session, "session is null");
         requireNonNull(taskId, "taskId is null");
@@ -230,7 +229,7 @@ public final class HttpRemoteTask
                     .map(outputId -> new BufferInfo(outputId, false, 0, 0, PageBufferInfo.empty()))
                     .collect(toImmutableList());
 
-            TaskInfo initialTask = createInitialTask(taskId, location, nodeId, bufferStates, new TaskStats(DateTime.now(), null), streamPort);
+            TaskInfo initialTask = createInitialTask(taskId, location, nodeId, bufferStates, new TaskStats(DateTime.now(), null));
 
             this.taskStatusFetcher = new ContinuousTaskStatusFetcher(
                     this::failTask,

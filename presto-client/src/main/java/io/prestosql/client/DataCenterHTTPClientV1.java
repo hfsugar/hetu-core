@@ -23,6 +23,10 @@ import com.google.common.collect.Sets;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
+import io.hetu.core.transport.execution.buffer.SerializedPage;
+import io.prestosql.client.block.ExternalBlockEncodingSerde;
 import io.prestosql.client.protocol.DataCenterRowIterable;
 import io.prestosql.client.util.HttpUtil;
 import io.prestosql.spi.Page;
@@ -40,6 +44,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -103,6 +108,7 @@ public class DataCenterHTTPClientV1
     private final String clientId;
 
     private long token;
+    private final PagesSerde serde;
     private final DataCenterClientSession session;
     private TypeManager typeManager;
 
@@ -120,6 +126,8 @@ public class DataCenterHTTPClientV1
             throw new RuntimeException("Invalid server Url:" + session.getServer());
         }
         this.typeManager = session.getTypeManager();
+        this.serde = new PagesSerdeFactory(new ExternalBlockEncodingSerde(this.typeManager),
+                true).createPagesSerde();
 
         // Submit the query
         DataCenterResponse result = null;
@@ -241,7 +249,14 @@ public class DataCenterHTTPClientV1
     public List<Page> getPages()
     {
         checkState(isRunning(), "current position is not valid (cursor past end)");
-        List<Page> pages = currentResults.get().getData();
+        List<Page> pages = new ArrayList<>();
+        List<SerializedPage> dcSerializedPages = currentResults.get().getData();
+        if (dcSerializedPages == null) {
+            return pages;
+        }
+        for (SerializedPage dcSerializedPage : dcSerializedPages) {
+            pages.add(serde.deserialize(dcSerializedPage));
+        }
         return pages;
     }
 

@@ -56,7 +56,6 @@ public class TaskStatus
     private final long version;
     private final TaskState state;
     private final URI self;
-    private final int shuffleServicePort;
     private final String nodeId;
     private final Set<Lifespan> completedDriverGroups;
 
@@ -91,8 +90,7 @@ public class TaskStatus
             @JsonProperty("systemMemoryReservation") DataSize systemMemoryReservation,
             @JsonProperty("revocableMemoryReservation") DataSize revocableMemoryReservation,
             @JsonProperty("fullGcCount") long fullGcCount,
-            @JsonProperty("fullGcTime") Duration fullGcTime,
-            @JsonProperty("streamPort") int shuffleServicePort)
+            @JsonProperty("fullGcTime") Duration fullGcTime)
     {
         this.taskId = requireNonNull(taskId, "taskId is null");
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
@@ -101,7 +99,6 @@ public class TaskStatus
         this.version = version;
         this.state = requireNonNull(state, "state is null");
         this.self = requireNonNull(self, "self is null");
-        this.shuffleServicePort = shuffleServicePort;
         this.nodeId = requireNonNull(nodeId, "nodeId is null");
         this.completedDriverGroups = requireNonNull(completedDriverGroups, "completedDriverGroups is null");
 
@@ -153,12 +150,6 @@ public class TaskStatus
     public URI getSelf()
     {
         return self;
-    }
-
-    @JsonProperty
-    public int getShuffleServicePort()
-    {
-        return shuffleServicePort;
     }
 
     @JsonProperty
@@ -242,7 +233,7 @@ public class TaskStatus
                 .toString();
     }
 
-    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId, int shuffleServicePort)
+    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId)
     {
         return new TaskStatus(
                 taskId,
@@ -261,8 +252,7 @@ public class TaskStatus
                 new DataSize(0, BYTE),
                 new DataSize(0, BYTE),
                 0,
-                new Duration(0, MILLISECONDS),
-                shuffleServicePort);
+                new Duration(0, MILLISECONDS));
     }
 
     public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
@@ -284,7 +274,6 @@ public class TaskStatus
                 taskStatus.getSystemMemoryReservation(),
                 taskStatus.getRevocableMemoryReservation(),
                 taskStatus.getFullGcCount(),
-                taskStatus.getFullGcTime(),
-                taskStatus.getShuffleServicePort());
+                taskStatus.getFullGcTime());
     }
 }

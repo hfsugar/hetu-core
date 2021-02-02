@@ -29,8 +29,6 @@ import io.prestosql.spi.Page;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.connector.UpdatablePageSource;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
 import javax.annotation.concurrent.GuardedBy;
 
@@ -256,7 +254,7 @@ public class Driver
 
         // set no more splits
         if (newSource.isNoMoreSplits()) {
-            sourceOperator.setNoMoreSplits();
+            sourceOperator.noMoreSplits();
         }
 
         currentTaskSource = newSource;
@@ -347,79 +345,8 @@ public class Driver
     }
 
     @GuardedBy("exclusiveLock")
-    private void novaProcessInternal(OperationTimer operationTimer)
-    {
-        processNewSources();
-
-        Flux<Page> flux = Flux.create(sink -> {
-//            Operator source = activeOperators.get(0);
-//            if (source instanceof LocalMergeSourceOperator)
-            if (activeOperators.get(0).isFinished()) {
-                return;
-            }
-            Page page = activeOperators.get(0).getOutput();
-            if (page != null) {
-                sink.next(page);
-            }
-            if (activeOperators.get(0).isFinished()) {
-                sink.complete();
-            }
-        });
-
-        for (int i = 1; i < activeOperators.size() - 1; i++) {
-            Operator operator = activeOperators.get(i);
-            if (operator instanceof OrderByOperator) {
-                flux = flux.map(page -> {
-                    operator.addInput(page);
-                    return page;
-                }).collectList().map(page -> {
-                    operator.finish();
-                    return operator.getOutput();
-                }).flux();
-            }
-            else {
-                flux = flux.map(page -> {
-                    if (operator instanceof OrderByOperator) {
-                        return page; //need to by pass any blocking/finishing operators
-                    }
-                    operator.addInput(page);
-                    Page out = operator.getOutput();
-                    while (out == null) {
-                        try {
-                            Thread.sleep(50); //FIXME: need to find a better way to handle blocked output and notified in a faster way, this will impact latency, especially low latency queries a lot
-                        }
-                        catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                        out = operator.getOutput();
-                    }
-                    return out;
-                });
-            }
-        }
-
-        flux.subscribeOn(Schedulers.boundedElastic()).doOnComplete(() -> {
-            System.out.println("completing");
-            activeOperators.stream().map(operator -> {
-                operator.finish();
-                return operator;
-            });
-        }).subscribe(page -> {
-            Operator out = activeOperators.get(activeOperators.size() - 1);
-            System.out.println("sending out result " + out.getOperatorContext().getDriverContext().getTaskId() + " page: " + page);
-
-            out.addInput(page);
-        });
-    }
-
-    @GuardedBy("exclusiveLock")
     private ListenableFuture<?> processInternal(OperationTimer operationTimer)
     {
-//        novaProcessInternal(operationTimer);
-//        if (true) {
-//            return NOT_BLOCKED;
-//        }
-
         checkLockHeld("Lock must be held to call processInternal");
 
         handleMemoryRevoke();

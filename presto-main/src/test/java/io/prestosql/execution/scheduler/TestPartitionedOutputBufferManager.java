@@ -15,6 +15,7 @@ package io.prestosql.execution.scheduler;
 
 import com.google.common.collect.ImmutableList;
 import io.prestosql.execution.buffer.OutputBuffers;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import org.testng.annotations.Test;
 
 import java.util.Map;
@@ -39,14 +40,14 @@ public class TestPartitionedOutputBufferManager
         assertOutputBuffers(outputBufferTarget.get());
 
         // add buffers, which does not cause an error
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(0)), false);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(0)), false);
         assertOutputBuffers(outputBufferTarget.get());
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(3)), true);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(3)), true);
         assertOutputBuffers(outputBufferTarget.get());
 
         // try to a buffer out side of the partition range, which should result in an error
         try {
-            hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(5)), false);
+            hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(5)), false);
             fail("Expected IllegalStateException");
         }
         catch (IllegalStateException e) {
@@ -55,7 +56,7 @@ public class TestPartitionedOutputBufferManager
 
         // try to a buffer out side of the partition range, which should result in an error
         try {
-            hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(6)), true);
+            hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(6)), true);
             fail("Expected IllegalStateException");
         }
         catch (IllegalStateException e) {
@@ -68,10 +69,10 @@ public class TestPartitionedOutputBufferManager
         assertNotNull(outputBuffers);
         assertTrue(outputBuffers.getVersion() > 0);
         assertTrue(outputBuffers.isNoMoreBufferIds());
-        Map<String, Integer> buffers = outputBuffers.getBuffers();
+        Map<OutputBufferId, Integer> buffers = outputBuffers.getBuffers();
         assertEquals(buffers.size(), 4);
         for (int partition = 0; partition < 4; partition++) {
-            assertEquals(buffers.get(String.valueOf(partition)), Integer.valueOf(partition));
+            assertEquals(buffers.get(new OutputBufferId(partition)), Integer.valueOf(partition));
         }
     }
 }

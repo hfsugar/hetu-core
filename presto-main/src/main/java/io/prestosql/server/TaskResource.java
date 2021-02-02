@@ -29,6 +29,7 @@ import io.prestosql.execution.TaskManager;
 import io.prestosql.execution.TaskState;
 import io.prestosql.execution.TaskStatus;
 import io.prestosql.execution.buffer.BufferResult;
+import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.metadata.SessionPropertyManager;
 import io.prestosql.server.security.SecurityRequireNonNull;
 import io.prestosql.spi.Page;
@@ -246,7 +247,7 @@ public class TaskResource
     @Produces(PRESTO_PAGES)
     public void getResults(
             @PathParam("taskId") TaskId taskId,
-            @PathParam("bufferId") String bufferId,
+            @PathParam("bufferId") OutputBufferId bufferId,
             @PathParam("token") final long token,
             @HeaderParam(PRESTO_MAX_SIZE) DataSize maxSize,
             @Suspended AsyncResponse asyncResponse)
@@ -304,7 +305,7 @@ public class TaskResource
     @Path("{taskId}/results/{bufferId}/{token}/acknowledge")
     public void acknowledgeResults(
             @PathParam("taskId") TaskId taskId,
-            @PathParam("bufferId") String bufferId,
+            @PathParam("bufferId") OutputBufferId bufferId,
             @PathParam("token") final long token)
     {
         SecurityRequireNonNull.requireNonNull(taskId, "taskId is null");
@@ -316,7 +317,7 @@ public class TaskResource
     @DELETE
     @Path("{taskId}/results/{bufferId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public void abortResults(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") String bufferId, @Context UriInfo uriInfo)
+    public void abortResults(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") OutputBufferId bufferId, @Context UriInfo uriInfo)
     {
         SecurityRequireNonNull.requireNonNull(taskId, "taskId is null");
         SecurityRequireNonNull.requireNonNull(bufferId, "bufferId is null");

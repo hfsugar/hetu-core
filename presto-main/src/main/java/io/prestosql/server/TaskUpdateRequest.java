@@ -46,7 +46,7 @@ public class TaskUpdateRequest
             @JsonProperty("fragment") Optional<PlanFragment> fragment,
             @JsonProperty("sources") List<TaskSource> sources,
             @JsonProperty("outputIds") OutputBuffers outputIds,
-            @JsonProperty("totalPartitions") OptionalInt totalPartitions) // do we need optional here?
+            @JsonProperty("totalPartitions") OptionalInt totalPartitions)
     {
         requireNonNull(session, "session is null");
         requireNonNull(extraCredentials, "credentials is null");
