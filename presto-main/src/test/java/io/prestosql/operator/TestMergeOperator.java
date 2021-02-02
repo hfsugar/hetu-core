@@ -116,7 +116,7 @@ public class TestMergeOperator
         assertFalse(operator.isFinished());
         assertFalse(operator.isBlocked().isDone());
 
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> input = rowPagesBuilder(types)
                 .row(1, 1)
@@ -156,7 +156,7 @@ public class TestMergeOperator
         MergeOperator operator = createMergeOperator(types, ImmutableList.of(1, 0), ImmutableList.of(1, 0), ImmutableList.of(DESC_NULLS_FIRST, ASC_NULLS_FIRST));
         operator.addSplit(createRemoteSplit(TASK_1_ID));
         operator.addSplit(createRemoteSplit(TASK_2_ID));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> task1Pages = rowPagesBuilder(types)
                 .row(0, null)
@@ -207,7 +207,7 @@ public class TestMergeOperator
         operator.addSplit(createRemoteSplit(TASK_1_ID));
         operator.addSplit(createRemoteSplit(TASK_2_ID));
         operator.addSplit(createRemoteSplit(TASK_3_ID));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> source1Pages = rowPagesBuilder(types)
                 .row(1, 1, 2)

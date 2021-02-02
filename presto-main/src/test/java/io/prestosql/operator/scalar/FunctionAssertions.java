@@ -564,7 +564,7 @@ public final class FunctionAssertions
     {
         SourceOperator operator = operatorFactory.createOperator(createDriverContext(session));
         operator.addSplit(split);
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
         return selectSingleValue(operator, type);
     }
 
@@ -730,7 +730,7 @@ public final class FunctionAssertions
     {
         SourceOperator operator = operatorFactory.createOperator(createDriverContext(session));
         operator.addSplit(split);
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
         return executeFilter(operator);
     }
 

@@ -17,7 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.execution.buffer.BufferInfo;
-import io.prestosql.execution.buffer.OutputBufferInfo;
+import io.prestosql.execution.buffer.OutputBufferStatistics;
 import io.prestosql.operator.TaskStats;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import org.joda.time.DateTime;
@@ -38,7 +38,7 @@ public class TaskInfo
 {
     private final TaskStatus taskStatus;
     private final DateTime lastHeartbeat;
-    private final OutputBufferInfo outputBuffers;
+    private final OutputBufferStatistics outputBuffers;
     private final Set<PlanNodeId> noMoreSplits;
     private final TaskStats stats;
 
@@ -47,7 +47,7 @@ public class TaskInfo
     @JsonCreator
     public TaskInfo(@JsonProperty("taskStatus") TaskStatus taskStatus,
             @JsonProperty("lastHeartbeat") DateTime lastHeartbeat,
-            @JsonProperty("outputBuffers") OutputBufferInfo outputBuffers,
+            @JsonProperty("outputBuffers") OutputBufferStatistics outputBuffers,
             @JsonProperty("noMoreSplits") Set<PlanNodeId> noMoreSplits,
             @JsonProperty("stats") TaskStats stats,
             @JsonProperty("needsPlan") boolean needsPlan)
@@ -74,7 +74,7 @@ public class TaskInfo
     }
 
     @JsonProperty
-    public OutputBufferInfo getOutputBuffers()
+    public OutputBufferStatistics getOutputBuffers()
     {
         return outputBuffers;
     }
@@ -114,12 +114,12 @@ public class TaskInfo
                 .toString();
     }
 
-    public static TaskInfo createInitialTask(TaskId taskId, URI location, String nodeId, List<BufferInfo> bufferStates, TaskStats taskStats)
+    public static TaskInfo createInitialTask(TaskId taskId, URI location, String nodeId, List<BufferInfo> bufferStates, TaskStats taskStats, int streamPort)
     {
         return new TaskInfo(
-                initialTaskStatus(taskId, location, nodeId),
+                initialTaskStatus(taskId, location, nodeId, streamPort),
                 DateTime.now(),
-                new OutputBufferInfo("UNINITIALIZED", OPEN, true, true, 0, 0, 0, 0, bufferStates),
+                new OutputBufferStatistics("UNINITIALIZED", OPEN, true, true, 0, 0, 0, 0, bufferStates),
                 ImmutableSet.of(),
                 taskStats,
                 true);

@@ -208,6 +208,7 @@ import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
 import nova.hetu.omnicache.runtime.OmniRuntime;
+import nova.hetu.shuffle.PageProducer;
 
 import javax.inject.Inject;
 
@@ -400,106 +401,6 @@ public class LocalExecutionPlanner
         this.heuristicIndexerManager = requireNonNull(heuristicIndexerManager, "heuristicIndexerManager is null");
     }
 
-    private static void addLookupOuterDrivers(LocalExecutionPlanContext context)
-    {
-        // For an outer join on the lookup side (RIGHT or FULL) add an additional
-        // driver to output the unused rows in the lookup source
-        for (DriverFactory factory : context.getDriverFactories()) {
-            List<OperatorFactory> operatorFactories = factory.getOperatorFactories();
-            for (int i = 0; i < operatorFactories.size(); i++) {
-                OperatorFactory operatorFactory = operatorFactories.get(i);
-                if (!(operatorFactory instanceof JoinOperatorFactory)) {
-                    continue;
-                }
-
-                JoinOperatorFactory lookupJoin = (JoinOperatorFactory) operatorFactory;
-                Optional<OuterOperatorFactoryResult> outerOperatorFactoryResult = lookupJoin.createOuterOperatorFactory();
-                if (outerOperatorFactoryResult.isPresent()) {
-                    // Add a new driver to output the unmatched rows in an outer join.
-                    // We duplicate all of the factories above the JoinOperator (the ones reading from the joins),
-                    // and replace the JoinOperator with the OuterOperator (the one that produces unmatched rows).
-                    ImmutableList.Builder<OperatorFactory> newOperators = ImmutableList.builder();
-                    newOperators.add(outerOperatorFactoryResult.get().getOuterOperatorFactory());
-                    operatorFactories.subList(i + 1, operatorFactories.size()).stream()
-                            .map(OperatorFactory::duplicate)
-                            .forEach(newOperators::add);
-
-                    context.addDriverFactory(false, factory.isOutputDriver(), newOperators.build(), OptionalInt.of(1), outerOperatorFactoryResult.get().getBuildExecutionStrategy());
-                }
-            }
-        }
-    }
-
-    private static List<Type> getTypes(List<Expression> expressions, Map<NodeRef<Expression>, Type> expressionTypes)
-    {
-        return expressions.stream()
-                .map(NodeRef::of)
-                .map(expressionTypes::get)
-                .collect(toImmutableList());
-    }
-
-    private static TableFinisher createTableFinisher(Session session, TableFinishNode node, Metadata metadata)
-    {
-        WriterTarget target = node.getTarget();
-        return (fragments, statistics) -> {
-            if (target instanceof CreateTarget) {
-                return metadata.finishCreateTable(session, ((CreateTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof InsertTarget) {
-                return metadata.finishInsert(session, ((InsertTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof UpdateTarget) {
-                return metadata.finishUpdate(session, ((UpdateTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof VacuumTarget) {
-                return metadata.finishVacuum(session, ((VacuumTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof DeleteTarget) {
-                metadata.finishDelete(session, ((DeleteTarget) target).getHandle(), fragments);
-                return Optional.empty();
-            }
-            else if (target instanceof DeleteAsInsertTarget) {
-                metadata.finishDeleteAsInsert(session, ((DeleteAsInsertTarget) target).getHandle(), fragments, statistics);
-                return Optional.empty();
-            }
-            else {
-                throw new AssertionError("Unhandled target type: " + target.getClass().getName());
-            }
-        };
-    }
-
-    private static Function<Page, Page> enforceLayoutProcessor(List<Symbol> expectedLayout, Map<Symbol, Integer> inputLayout)
-    {
-        int[] channels = expectedLayout.stream()
-                .peek(symbol -> checkArgument(inputLayout.containsKey(symbol), "channel not found for symbol: %s", symbol))
-                .mapToInt(inputLayout::get)
-                .toArray();
-
-        if (Arrays.equals(channels, range(0, inputLayout.size()).toArray())) {
-            // this is an identity mapping
-            return Function.identity();
-        }
-
-        return new PageChannelSelector(channels);
-    }
-
-    private static List<Integer> getChannelsForSymbols(List<Symbol> symbols, Map<Symbol, Integer> layout)
-    {
-        ImmutableList.Builder<Integer> builder = ImmutableList.builder();
-        for (Symbol symbol : symbols) {
-            builder.add(layout.get(symbol));
-        }
-        return builder.build();
-    }
-
-    private static Function<Symbol, Integer> channelGetter(PhysicalOperation source)
-    {
-        return input -> {
-            checkArgument(source.getLayout().containsKey(input));
-            return source.getLayout().get(input);
-        };
-    }
-
     public LocalExecutionPlan plan(
             TaskContext taskContext,
             PlanNode plan,
@@ -507,7 +408,8 @@ public class LocalExecutionPlanner
             PartitioningScheme partitioningScheme,
             StageExecutionDescriptor stageExecutionDescriptor,
             List<PlanNodeId> partitionedSourceOrder,
-            OutputBuffer outputBuffer)
+            OutputBuffer outputBuffer,
+            List<PageProducer> pageProducers)
     {
         List<Symbol> outputLayout = partitioningScheme.getOutputLayout();
 
@@ -516,7 +418,7 @@ public class LocalExecutionPlanner
                 partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
-            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, new TaskOutputFactory(outputBuffer));
+            return plan(taskContext, stageExecutionDescriptor, plan, outputLayout, types, partitionedSourceOrder, pageProducers, new TaskOutputFactory(outputBuffer, pageProducers.get(0)));
         }
 
         // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -572,6 +474,7 @@ public class LocalExecutionPlanner
                 outputLayout,
                 types,
                 partitionedSourceOrder,
+                pageProducers,
                 new PartitionedOutputFactory(
                         partitionFunction,
                         partitionChannels,
@@ -579,6 +482,7 @@ public class LocalExecutionPlanner
                         partitioningScheme.isReplicateNullsAndAny(),
                         nullChannel,
                         outputBuffer,
+                        pageProducers,
                         maxPagePartitioningBufferSize));
     }
 
@@ -589,6 +493,7 @@ public class LocalExecutionPlanner
             List<Symbol> outputLayout,
             TypeProvider types,
             List<PlanNodeId> partitionedSourceOrder,
+            List<PageProducer> outputStreams,
             OutputFactory outputOperatorFactory)
     {
         Session session = taskContext.getSession();
@@ -628,6 +533,36 @@ public class LocalExecutionPlanner
                 .forEach(LocalPlannerAware::localPlannerComplete);
 
         return new LocalExecutionPlan(context.getDriverFactories(), partitionedSourceOrder, stageExecutionDescriptor);
+    }
+
+    private static void addLookupOuterDrivers(LocalExecutionPlanContext context)
+    {
+        // For an outer join on the lookup side (RIGHT or FULL) add an additional
+        // driver to output the unused rows in the lookup source
+        for (DriverFactory factory : context.getDriverFactories()) {
+            List<OperatorFactory> operatorFactories = factory.getOperatorFactories();
+            for (int i = 0; i < operatorFactories.size(); i++) {
+                OperatorFactory operatorFactory = operatorFactories.get(i);
+                if (!(operatorFactory instanceof JoinOperatorFactory)) {
+                    continue;
+                }
+
+                JoinOperatorFactory lookupJoin = (JoinOperatorFactory) operatorFactory;
+                Optional<OuterOperatorFactoryResult> outerOperatorFactoryResult = lookupJoin.createOuterOperatorFactory();
+                if (outerOperatorFactoryResult.isPresent()) {
+                    // Add a new driver to output the unmatched rows in an outer join.
+                    // We duplicate all of the factories above the JoinOperator (the ones reading from the joins),
+                    // and replace the JoinOperator with the OuterOperator (the one that produces unmatched rows).
+                    ImmutableList.Builder<OperatorFactory> newOperators = ImmutableList.builder();
+                    newOperators.add(outerOperatorFactoryResult.get().getOuterOperatorFactory());
+                    operatorFactories.subList(i + 1, operatorFactories.size()).stream()
+                            .map(OperatorFactory::duplicate)
+                            .forEach(newOperators::add);
+
+                    context.addDriverFactory(false, factory.isOutputDriver(), newOperators.build(), OptionalInt.of(1), outerOperatorFactoryResult.get().getBuildExecutionStrategy());
+                }
+            }
+        }
     }
 
     private static class LocalExecutionPlanContext
@@ -810,113 +745,6 @@ public class LocalExecutionPlanner
         public StageExecutionDescriptor getStageExecutionDescriptor()
         {
             return stageExecutionDescriptor;
-        }
-    }
-
-    /**
-     * Encapsulates an physical operator plus the mapping of logical symbols to channel/field
-     */
-    private static class PhysicalOperation
-    {
-        private final List<OperatorFactory> operatorFactories;
-        private final Map<Symbol, Integer> layout;
-        private final List<Type> types;
-
-        private final PipelineExecutionStrategy pipelineExecutionStrategy;
-
-        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PipelineExecutionStrategy pipelineExecutionStrategy)
-        {
-            this(operatorFactory, layout, context, Optional.empty(), pipelineExecutionStrategy);
-        }
-
-        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PhysicalOperation source)
-        {
-            this(operatorFactory, layout, context, Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
-        }
-
-        private PhysicalOperation(
-                OperatorFactory operatorFactory,
-                Map<Symbol, Integer> layout,
-                LocalExecutionPlanContext context,
-                Optional<PhysicalOperation> source,
-                PipelineExecutionStrategy pipelineExecutionStrategy)
-        {
-            requireNonNull(operatorFactory, "operatorFactory is null");
-            requireNonNull(layout, "layout is null");
-            requireNonNull(context, "context is null");
-            requireNonNull(source, "source is null");
-            requireNonNull(pipelineExecutionStrategy, "pipelineExecutionStrategy is null");
-
-            this.operatorFactories = ImmutableList.<OperatorFactory>builder()
-                    .addAll(source.map(PhysicalOperation::getOperatorFactories).orElse(ImmutableList.of()))
-                    .add(operatorFactory)
-                    .build();
-            this.layout = ImmutableMap.copyOf(layout);
-            this.types = toTypes(layout, context);
-            this.pipelineExecutionStrategy = pipelineExecutionStrategy;
-        }
-
-        private static List<Type> toTypes(Map<Symbol, Integer> layout, LocalExecutionPlanContext context)
-        {
-            // verify layout covers all values
-            int channelCount = layout.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
-            checkArgument(
-                    layout.size() == channelCount && ImmutableSet.copyOf(layout.values()).containsAll(ContiguousSet.create(closedOpen(0, channelCount), integers())),
-                    "Layout does not have a symbol for every output channel: %s", layout);
-            Map<Integer, Symbol> channelLayout = ImmutableBiMap.copyOf(layout).inverse();
-
-            return range(0, channelCount)
-                    .mapToObj(channelLayout::get)
-                    .map(context.getTypes()::get)
-                    .collect(toImmutableList());
-        }
-
-        public int symbolToChannel(Symbol input)
-        {
-            checkArgument(layout.containsKey(input));
-            return layout.get(input);
-        }
-
-        public List<Type> getTypes()
-        {
-            return types;
-        }
-
-        public Map<Symbol, Integer> getLayout()
-        {
-            return layout;
-        }
-
-        private List<OperatorFactory> getOperatorFactories()
-        {
-            return operatorFactories;
-        }
-
-        public PipelineExecutionStrategy getPipelineExecutionStrategy()
-        {
-            return pipelineExecutionStrategy;
-        }
-    }
-
-    private static class DriverFactoryParameters
-    {
-        private final LocalExecutionPlanContext subContext;
-        private final PhysicalOperation source;
-
-        public DriverFactoryParameters(LocalExecutionPlanContext subContext, PhysicalOperation source)
-        {
-            this.subContext = subContext;
-            this.source = source;
-        }
-
-        public LocalExecutionPlanContext getSubContext()
-        {
-            return subContext;
-        }
-
-        public PhysicalOperation getSource()
-        {
-            return source;
         }
     }
 
@@ -3148,7 +2976,6 @@ public class LocalExecutionPlanner
                 Optional<DataSize> maxPartialAggregationMemorySize,
                 boolean useSystemMemory)
         {
-
             List<Symbol> aggregationOutputSymbols = new ArrayList<>();
             List<AccumulatorFactory> accumulatorFactories = new ArrayList<>();
             for (Map.Entry<Symbol, Aggregation> entry : aggregations.entrySet()) {
@@ -3235,6 +3062,183 @@ public class LocalExecutionPlanner
                         joinCompiler,
                         useSystemMemory);
             }
+        }
+    }
+
+    private static List<Type> getTypes(List<Expression> expressions, Map<NodeRef<Expression>, Type> expressionTypes)
+    {
+        return expressions.stream()
+                .map(NodeRef::of)
+                .map(expressionTypes::get)
+                .collect(toImmutableList());
+    }
+
+    private static TableFinisher createTableFinisher(Session session, TableFinishNode node, Metadata metadata)
+    {
+        WriterTarget target = node.getTarget();
+        return (fragments, statistics) -> {
+            if (target instanceof CreateTarget) {
+                return metadata.finishCreateTable(session, ((CreateTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof InsertTarget) {
+                return metadata.finishInsert(session, ((InsertTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof UpdateTarget) {
+                return metadata.finishUpdate(session, ((UpdateTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof VacuumTarget) {
+                return metadata.finishVacuum(session, ((VacuumTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof DeleteTarget) {
+                metadata.finishDelete(session, ((DeleteTarget) target).getHandle(), fragments);
+                return Optional.empty();
+            }
+            else if (target instanceof DeleteAsInsertTarget) {
+                metadata.finishDeleteAsInsert(session, ((DeleteAsInsertTarget) target).getHandle(), fragments, statistics);
+                return Optional.empty();
+            }
+            else {
+                throw new AssertionError("Unhandled target type: " + target.getClass().getName());
+            }
+        };
+    }
+
+    private static Function<Page, Page> enforceLayoutProcessor(List<Symbol> expectedLayout, Map<Symbol, Integer> inputLayout)
+    {
+        int[] channels = expectedLayout.stream()
+                .peek(symbol -> checkArgument(inputLayout.containsKey(symbol), "channel not found for symbol: %s", symbol))
+                .mapToInt(inputLayout::get)
+                .toArray();
+
+        if (Arrays.equals(channels, range(0, inputLayout.size()).toArray())) {
+            // this is an identity mapping
+            return Function.identity();
+        }
+
+        return new PageChannelSelector(channels);
+    }
+
+    private static List<Integer> getChannelsForSymbols(List<Symbol> symbols, Map<Symbol, Integer> layout)
+    {
+        ImmutableList.Builder<Integer> builder = ImmutableList.builder();
+        for (Symbol symbol : symbols) {
+            builder.add(layout.get(symbol));
+        }
+        return builder.build();
+    }
+
+    private static Function<Symbol, Integer> channelGetter(PhysicalOperation source)
+    {
+        return input -> {
+            checkArgument(source.getLayout().containsKey(input));
+            return source.getLayout().get(input);
+        };
+    }
+
+    /**
+     * Encapsulates an physical operator plus the mapping of logical symbols to channel/field
+     */
+    private static class PhysicalOperation
+    {
+        private final List<OperatorFactory> operatorFactories;
+        private final Map<Symbol, Integer> layout;
+        private final List<Type> types;
+
+        private final PipelineExecutionStrategy pipelineExecutionStrategy;
+
+        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PipelineExecutionStrategy pipelineExecutionStrategy)
+        {
+            this(operatorFactory, layout, context, Optional.empty(), pipelineExecutionStrategy);
+        }
+
+        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PhysicalOperation source)
+        {
+            this(operatorFactory, layout, context, Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
+        }
+
+        private PhysicalOperation(
+                OperatorFactory operatorFactory,
+                Map<Symbol, Integer> layout,
+                LocalExecutionPlanContext context,
+                Optional<PhysicalOperation> source,
+                PipelineExecutionStrategy pipelineExecutionStrategy)
+        {
+            requireNonNull(operatorFactory, "operatorFactory is null");
+            requireNonNull(layout, "layout is null");
+            requireNonNull(context, "context is null");
+            requireNonNull(source, "source is null");
+            requireNonNull(pipelineExecutionStrategy, "pipelineExecutionStrategy is null");
+
+            this.operatorFactories = ImmutableList.<OperatorFactory>builder()
+                    .addAll(source.map(PhysicalOperation::getOperatorFactories).orElse(ImmutableList.of()))
+                    .add(operatorFactory)
+                    .build();
+            this.layout = ImmutableMap.copyOf(layout);
+            this.types = toTypes(layout, context);
+            this.pipelineExecutionStrategy = pipelineExecutionStrategy;
+        }
+
+        private static List<Type> toTypes(Map<Symbol, Integer> layout, LocalExecutionPlanContext context)
+        {
+            // verify layout covers all values
+            int channelCount = layout.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
+            checkArgument(
+                    layout.size() == channelCount && ImmutableSet.copyOf(layout.values()).containsAll(ContiguousSet.create(closedOpen(0, channelCount), integers())),
+                    "Layout does not have a symbol for every output channel: %s", layout);
+            Map<Integer, Symbol> channelLayout = ImmutableBiMap.copyOf(layout).inverse();
+
+            return range(0, channelCount)
+                    .mapToObj(channelLayout::get)
+                    .map(context.getTypes()::get)
+                    .collect(toImmutableList());
+        }
+
+        public int symbolToChannel(Symbol input)
+        {
+            checkArgument(layout.containsKey(input));
+            return layout.get(input);
+        }
+
+        public List<Type> getTypes()
+        {
+            return types;
+        }
+
+        public Map<Symbol, Integer> getLayout()
+        {
+            return layout;
+        }
+
+        private List<OperatorFactory> getOperatorFactories()
+        {
+            return operatorFactories;
+        }
+
+        public PipelineExecutionStrategy getPipelineExecutionStrategy()
+        {
+            return pipelineExecutionStrategy;
+        }
+    }
+
+    private static class DriverFactoryParameters
+    {
+        private final LocalExecutionPlanContext subContext;
+        private final PhysicalOperation source;
+
+        public DriverFactoryParameters(LocalExecutionPlanContext subContext, PhysicalOperation source)
+        {
+            this.subContext = subContext;
+            this.source = source;
+        }
+
+        public LocalExecutionPlanContext getSubContext()
+        {
+            return subContext;
+        }
+
+        public PhysicalOperation getSource()
+        {
+            return source;
         }
     }
 }
