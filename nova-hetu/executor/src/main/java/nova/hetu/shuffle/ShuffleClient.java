@@ -16,9 +16,11 @@ package nova.hetu.shuffle;
 
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 
+import java.io.Closeable;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public interface ShuffleClient
+        extends Closeable
 {
     void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback);
 }

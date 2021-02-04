@@ -55,14 +55,11 @@ public class BroadcastStream
     {
         this.id = id;
         this.serde = serde;
-        this.commMode = PagesSerde.CommunicationMode.INMEMORY;
+        this.commMode = PagesSerde.CommunicationMode.STANDARD;
     }
 
     @Override
-    public void setCommunicationMode()
-    {
-        commMode = PagesSerde.CommunicationMode.STANDARD;
-    }
+    public void setCommunicationMode() {}
 
     @Override
     public SerializedPage take()

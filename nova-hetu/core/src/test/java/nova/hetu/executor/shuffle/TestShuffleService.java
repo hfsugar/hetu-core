@@ -62,6 +62,25 @@ public class TestShuffleService
     }
 
     @Test
+    public void TestSingleConsumerQueueNoProduderClose()
+            throws Exception
+    {
+        String taskid = ShuffleServiceTestUtil.getTaskId();
+        int bufferid = 0;
+
+        PagesSerde serde = new ShuffleServiceTestUtil.MockConstantPagesSerde();
+
+        long[] result = new long[10];
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid + "-" + bufferid), serde);
+        Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
+        consumerThread.start();
+        assertFalse(consumer.isEnded());
+        consumer.close();
+        consumerThread.join();
+        assertTrue(consumer.isEnded());
+    }
+
+    @Test
     public void TestSingleProducerSingleConsumerQueue()
             throws Exception
     {

@@ -23,6 +23,7 @@ import nova.hetu.shuffle.ProducerInfo;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -113,6 +114,21 @@ public class StreamingExchangeClient
     @Override
     public void close()
     {
-        closed.compareAndSet(false, true);
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        for (PageConsumer client : pageConsumers.values()) {
+            closeQuietly(client);
+        }
+    }
+
+    private static void closeQuietly(PageConsumer client)
+    {
+        try {
+            client.close();
+        }
+        catch (RuntimeException | IOException e) {
+            // ignored
+        }
     }
 }

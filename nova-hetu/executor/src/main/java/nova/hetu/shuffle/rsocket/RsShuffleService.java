@@ -46,8 +46,7 @@ public class RsShuffleService
                 String producerId = payload.getDataUtf8();
 
                 log.info("requesting stream: " + producerId);
-                Stream stream = getStream(producerId);
-
+                Stream stream = StreamManager.getStream(producerId, PagesSerde.CommunicationMode.STANDARD, StreamManager.DEFAULT_MAX_WAIT, StreamManager.DEFAULT_SLEEP_INTERVAL);
                 if (stream == null) {
                     throw new RuntimeException("Error getting stream after retry: " + producerId);
                 }
@@ -56,32 +55,6 @@ public class RsShuffleService
                 return getFlux_Sink(stream);
             }
         });
-    }
-
-    private Stream getStream(String producerId)
-    {
-        Stream stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
-
-        // TODO consider adding an event listener to wake up
-        /**
-         * Wait until stream is created, another way is to simply return and let the client try again
-         */
-        long maxWait = 5000;
-        long sleepInterval = 50;
-        while (stream == null && maxWait > 0) {
-            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
-            try {
-                maxWait -= sleepInterval;
-                Thread.sleep(sleepInterval);
-            }
-            catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            if (stream != null) {
-                log.info("Got stream after retry " + producerId);
-            }
-        }
-        return stream;
     }
 
     private Flux<Payload> getFlux_Sink(Stream stream)

@@ -22,69 +22,66 @@ import nova.hetu.shuffle.stream.Stream;
 import nova.hetu.shuffle.stream.StreamManager;
 import org.apache.log4j.Logger;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
 
 public class LocalShuffleClient
         implements ShuffleClient
 {
-    private static Logger log = Logger.getLogger(LocalShuffleClient.class);
+    private static final ExecutorService executor = Executors.newWorkStealingPool();
+    private static final Logger log = Logger.getLogger(LocalShuffleClient.class);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private Future resultFuture;
+    private ShuffleClientCallback shuffleClientCallback;
 
     public void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback)
     {
         log.info("******************* Local shuffle client for producer " + producerId);
-
-        final Thread thread = new Thread(() -> {
-            Stream stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.INMEMORY);
-            long maxWait = 1000;
-            long sleepInterval = 50;
-            while (stream == null && maxWait > 0) {
-                stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.INMEMORY);
-                try {
-                    maxWait -= sleepInterval;
-                    Thread.sleep(sleepInterval);
+        this.shuffleClientCallback = shuffleClientCallback;
+        resultFuture = executor.submit(() -> {
+            while (!closed.get()) {
+                Stream stream = null;
+                while (stream == null && !closed.get()) {
+                    stream = StreamManager.getStream(producerId, PagesSerde.CommunicationMode.INMEMORY, StreamManager.DEFAULT_MAX_WAIT, StreamManager.DEFAULT_SLEEP_INTERVAL);
                 }
-                catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                if (stream == null) {
+                    log.warn("Could not get Stream for Producer: " + producerId + " before exchange client closed");
+                    return;
                 }
-                if (stream != null) {
-                    log.info("Got output stream after retry " + producerId);
-                }
-            }
-
-            if (stream == null) {
-                shuffleClientCallback.clientFailed(new RuntimeException("invalid producer: " + producerId));
-                return;
-            }
-
-            while (stream != null) {
                 try {
                     SerializedPage page = stream.take();
                     if (page == EOS) {
-                        try {
-                            stream.destroy();
-                            shuffleClientCallback.clientFinished();
-                            log.info("Local shuffle client is done");
-                        }
-                        catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        break;
+                        stream.destroy();
+                        shuffleClientCallback.clientFinished();
+                        log.info("Local shuffle client is done");
+                        return;
                     }
-                    try {
+                    else {
                         pageOutputBuffer.put(page);
-                    }
-                    catch (InterruptedException e) {
-                        throw new RuntimeException(e);
                     }
                     log.info(page);
                 }
-                catch (InterruptedException e) {
-                    e.printStackTrace();
+                catch (Exception e) {
+                    shuffleClientCallback.clientFailed(e);
                 }
             }
         });
-        thread.start();
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        closed.set(true);
+        if (resultFuture != null && !resultFuture.isDone()) {
+            resultFuture.cancel(true);
+            this.shuffleClientCallback.clientFinished();
+        }
     }
 }

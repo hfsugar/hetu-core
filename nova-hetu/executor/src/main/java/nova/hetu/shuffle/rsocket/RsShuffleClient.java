@@ -29,6 +29,7 @@ import nova.hetu.shuffle.ShuffleClientCallback;
 import org.apache.log4j.Logger;
 import reactor.core.publisher.Flux;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -93,5 +94,12 @@ public class RsShuffleClient
             throws InterruptedException, ExecutionException
     {
         new RsShuffleClient().getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>(), null);
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        //FIXME close properly
     }
 }

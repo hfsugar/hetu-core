@@ -20,6 +20,7 @@ import io.grpc.stub.StreamObserver;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import org.apache.log4j.Logger;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,6 +76,13 @@ public class GrpcShuffleClient
          * get the result in a new thread, which should add the result into the pages buffer
          */
         shuffler.getResult(task, new ShuffleStreamObserver(pageOutputBuffer, shuffleClientCallback));
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        // FIXME  : close client properly
     }
 
     private static class ShuffleStreamObserver

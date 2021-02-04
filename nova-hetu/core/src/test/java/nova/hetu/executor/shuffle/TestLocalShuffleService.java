@@ -66,6 +66,26 @@ public class TestLocalShuffleService
             assertEquals(i, result[i]);
         }
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer.isClosed());
+    }
+
+    @Test
+    public void TestSingleConsumerQueueNoProduderClose()
+            throws Exception
+    {
+        String taskid = ShuffleServiceTestUtil.getTaskId();
+        int bufferid = 0;
+
+        PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
+
+        long[] result = new long[10];
+        PageConsumer consumer = PageConsumer.create(new ProducerInfo("127.0.0.1", 16544, taskid + "-" + bufferid), serde, false);
+        Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
+        consumerThread.start();
+        assertFalse(consumer.isEnded());
+        consumer.close();
+        consumerThread.join();
+        assertEquals(true, consumer.isEnded());
     }
 
     @Test
@@ -95,6 +115,7 @@ public class TestLocalShuffleService
             assertEquals(i, result[i]);
         }
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer.isClosed());
     }
 
     @Test
@@ -145,6 +166,7 @@ public class TestLocalShuffleService
         consumerThread.start();
         consumerThread.join();
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer.isClosed());
     }
 
     public void TestSingleProducerMultipleConsumerQueue()
@@ -187,6 +209,7 @@ public class TestLocalShuffleService
         }
         assertEquals(true, consumer.isEnded());
         assertEquals(true, consumer2.isEnded());
+        assertTrue(producer.isClosed());
     }
 
     @Test
@@ -230,6 +253,8 @@ public class TestLocalShuffleService
             }
         }
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer1.isClosed());
+        assertTrue(producer2.isClosed());
     }
 
     @Test
@@ -276,6 +301,8 @@ public class TestLocalShuffleService
             }
         }
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer1.isClosed());
+        assertTrue(producer2.isClosed());
     }
 
     @Test
@@ -327,6 +354,8 @@ public class TestLocalShuffleService
         }
         assertEquals(true, consumer1.isEnded());
         assertEquals(true, consumer2.isEnded());
+        assertTrue(producer1.isClosed());
+        assertTrue(producer2.isClosed());
     }
 
     public void TestMultiProducerSingleConsumerQueue()
@@ -379,6 +408,10 @@ public class TestLocalShuffleService
             assertEquals(i, result[i]);
         }
         assertTrue(consumer.isEnded());
+        assertTrue(producer1.isClosed());
+        assertTrue(producer2.isClosed());
+        assertTrue(producer3.isClosed());
+        assertTrue(producer4.isClosed());
     }
 
     @Test
@@ -457,6 +490,7 @@ public class TestLocalShuffleService
             assertEquals(i, result[i]);
         }
         assertEquals(true, consumer.isEnded());
+        assertTrue(producer.isClosed());
     }
 
     @Test

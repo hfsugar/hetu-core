@@ -113,7 +113,7 @@ public class PagesSerde
             slice = Slices.copyOf(slice);
         }
 
-        return new SerializedPage(slice, markers, page.getPositionCount(), uncompressedSize, page.getPageMetadata(), page);
+        return new SerializedPage(slice, markers, page.getPositionCount(), uncompressedSize, page.getPageMetadata(), null);
     }
 
     public void serialize(SerializedPage serializedPage)

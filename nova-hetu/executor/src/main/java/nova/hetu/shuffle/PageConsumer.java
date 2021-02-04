@@ -20,6 +20,8 @@ import io.prestosql.spi.Page;
 import nova.hetu.shuffle.inmemory.LocalShuffleClient;
 import nova.hetu.shuffle.rsocket.RsShuffleClient;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
@@ -31,11 +33,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import static java.util.Objects.requireNonNull;
 
 public class PageConsumer
+        implements Closeable
 {
     LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
     PagesSerde serde;
     private final AtomicBoolean shuffleClientFinished = new AtomicBoolean();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
+    private ShuffleClient shuffleClient;
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
@@ -77,17 +81,16 @@ public class PageConsumer
 
         switch (commMode) {
             case INMEMORY:
-                ShuffleClient localShuffleClient = new LocalShuffleClient();
-                localShuffleClient.getResults(null, 0, producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+                shuffleClient = new LocalShuffleClient();
                 break;
             case STANDARD:
                 // TODO: pass in an event listener to handler success and failure events
-                ShuffleClient rsShuffleClient = new RsShuffleClient();
-                rsShuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+                shuffleClient = new RsShuffleClient();
                 break;
             default:
                 throw new RuntimeException("Unsupported PageConsumer type: " + commMode);
         }
+        shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
     }
 
     public Page poll()
@@ -106,6 +109,14 @@ public class PageConsumer
     public boolean isEnded()
     {
         return pageOutputBuffer.isEmpty() && shuffleClientFinished.get();
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        shuffleClient.close();
+        pageOutputBuffer.clear();
     }
 
     private class ShuffleClientCallbackImpl

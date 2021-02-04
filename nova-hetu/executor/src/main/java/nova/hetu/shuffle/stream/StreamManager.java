@@ -21,11 +21,32 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class StreamManager
 {
+    public static final long DEFAULT_MAX_WAIT = 5000;
+    public static final long DEFAULT_SLEEP_INTERVAL = 50;
     private static final Logger LOG = Logger.getLogger(StreamManager.class);
+    private static final ConcurrentHashMap<String, Stream> streams = new ConcurrentHashMap<>();
 
     private StreamManager() {}
 
-    private static ConcurrentHashMap<String, Stream> streams = new ConcurrentHashMap<>();
+    public static Stream getStream(String producerId, PagesSerde.CommunicationMode mode, long maxWait, long sleepInterval)
+    {
+        Stream stream = StreamManager.get(producerId, mode);
+
+        while (stream == null && maxWait > 0) {
+            stream = StreamManager.get(producerId, mode);
+            try {
+                maxWait -= sleepInterval;
+                Thread.sleep(sleepInterval);
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            if (stream != null) {
+                LOG.info("Got stream after retry " + producerId);
+            }
+        }
+        return stream;
+    }
 
     public static Stream get(String streamId, PagesSerde.CommunicationMode commMode)
     {
