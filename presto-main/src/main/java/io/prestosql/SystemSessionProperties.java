@@ -19,6 +19,7 @@ import io.airlift.units.Duration;
 import io.prestosql.execution.QueryManagerConfig;
 import io.prestosql.execution.TaskManagerConfig;
 import io.prestosql.memory.MemoryManagerConfig;
+import io.prestosql.operator.ExchangeClientConfig;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.session.PropertyMetadata;
 import io.prestosql.sql.analyzer.FeaturesConfig;
@@ -150,12 +151,13 @@ public final class SystemSessionProperties
     public static final String SPILL_REUSE_TABLESCAN = "spill_reuse_tablescan";
     public static final String SPILL_THRESHOLD_REUSE_TABLESCAN = "spill_threshold_reuse_tablescan";
     public static final String OMNI_CACHE_ENABLED = "omni_cache_enabled";
+    public static final String SHUFFLE_SERVICE_ENABLED = "shuffle_service_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
     public SystemSessionProperties()
     {
-        this(new QueryManagerConfig(), new TaskManagerConfig(), new MemoryManagerConfig(), new FeaturesConfig(), new HetuConfig());
+        this(new QueryManagerConfig(), new TaskManagerConfig(), new MemoryManagerConfig(), new FeaturesConfig(), new ExchangeClientConfig(), new HetuConfig());
     }
 
     @Inject
@@ -164,6 +166,7 @@ public final class SystemSessionProperties
             TaskManagerConfig taskManagerConfig,
             MemoryManagerConfig memoryManagerConfig,
             FeaturesConfig featuresConfig,
+            ExchangeClientConfig exchangeClientConfig,
             HetuConfig hetuConfig)
     {
         sessionProperties = ImmutableList.of(
@@ -690,6 +693,11 @@ public final class SystemSessionProperties
                         SPILL_THRESHOLD_REUSE_TABLESCAN,
                         "Spiller Threshold (in MB) for TableScanOperator and WorkProcessorSourceOperatorAdapter for Reuse Exchange",
                         featuresConfig.getSpillOperatorThresholdReuseExchange(),
+                        false),
+                booleanProperty(
+                        SHUFFLE_SERVICE_ENABLED,
+                        "Enable shuffle service",
+                        exchangeClientConfig.isShuffleServiceEnabled(),
                         false));
     }
 
@@ -1217,5 +1225,10 @@ public final class SystemSessionProperties
     public List<PropertyMetadata<?>> getSessionProperties()
     {
         return sessionProperties;
+    }
+
+    public static boolean isShuffleServiceEnabled(Session session)
+    {
+        return session.getSystemProperty(SHUFFLE_SERVICE_ENABLED, Boolean.class);
     }
 }

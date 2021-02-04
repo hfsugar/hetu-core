@@ -16,6 +16,7 @@ package io.prestosql.spi;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.DictionaryBlock;
 import io.prestosql.spi.block.DictionaryId;
+import nova.hetu.omnicache.OMVectorBase;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static io.airlift.slice.SizeOf.sizeOf;
@@ -42,7 +44,7 @@ public class Page
     private final AtomicLong sizeInBytes = new AtomicLong(-1);
     private final AtomicLong retainedSizeInBytes = new AtomicLong(-1);
     private final AtomicLong logicalSizeInBytes = new AtomicLong(-1);
-
+    private final AtomicBoolean free = new AtomicBoolean(false);
     private Properties pageMetadata = new Properties();
 
     public Page(Block... blocks)
@@ -117,6 +119,37 @@ public class Page
     public Block getBlock(int channel)
     {
         return blocks[channel];
+    }
+
+    public Block[] getBlocks()
+    {
+        return blocks;
+    }
+
+    public boolean isOffHeap()
+    {
+        for (Block block : blocks) {
+            // TODO: check with trans type?
+            if (!block.isOffHeap()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public void free()
+    {
+        if (!free.getAndSet(true)) {
+            if (blocks == null) {
+                return;
+            }
+            for (Block block : blocks) {
+                // TODO: check with trans type?
+                if (block.isOffHeap()) {
+                    OMVectorBase.free(block.getVec().getData());
+                }
+            }
+        }
     }
 
     /**

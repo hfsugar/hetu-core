@@ -15,7 +15,6 @@ package io.prestosql.execution.buffer;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.collect.ImmutableMap;
 import io.prestosql.sql.planner.PartitioningHandle;
 
@@ -32,7 +31,6 @@ import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static io.prestosql.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
 import static io.prestosql.sql.planner.SystemPartitioningHandle.FIXED_BROADCAST_DISTRIBUTION;
-import static java.lang.Integer.parseInt;
 import static java.util.Objects.requireNonNull;
 
 public final class OutputBuffers
@@ -69,7 +67,7 @@ public final class OutputBuffers
     private final BufferType type;
     private final long version;
     private final boolean noMoreBufferIds;
-    private final Map<OutputBufferId, Integer> buffers;
+    private final Map<String, Integer> buffers;
 
     // Visible only for Jackson... Use the "with" methods instead
     @JsonCreator
@@ -77,7 +75,7 @@ public final class OutputBuffers
             @JsonProperty("type") BufferType type,
             @JsonProperty("version") long version,
             @JsonProperty("noMoreBufferIds") boolean noMoreBufferIds,
-            @JsonProperty("buffers") Map<OutputBufferId, Integer> buffers)
+            @JsonProperty("buffers") Map<String, Integer> buffers)
     {
         this.type = type;
         this.version = version;
@@ -104,7 +102,7 @@ public final class OutputBuffers
     }
 
     @JsonProperty
-    public Map<OutputBufferId, Integer> getBuffers()
+    public Map<String, Integer> getBuffers()
     {
         return buffers;
     }
@@ -128,7 +126,7 @@ public final class OutputBuffers
         }
 
         // assure we have not changed the buffer assignments
-        for (Entry<OutputBufferId, Integer> entry : buffers.entrySet()) {
+        for (Entry<String, Integer> entry : buffers.entrySet()) {
             if (!entry.getValue().equals(newOutputBuffers.buffers.get(entry.getKey()))) {
                 throw new IllegalArgumentException("newOutputBuffers has changed the assignment for task " + entry.getKey());
             }
@@ -157,7 +155,7 @@ public final class OutputBuffers
     }
 
     @Override
-    public String toString()
+    public java.lang.String toString()
     {
         return toStringHelper(this)
                 .add("type", type)
@@ -167,7 +165,7 @@ public final class OutputBuffers
                 .toString();
     }
 
-    public OutputBuffers withBuffer(OutputBufferId bufferId, int partition)
+    public OutputBuffers withBuffer(String bufferId, int partition)
     {
         requireNonNull(bufferId, "bufferId is null");
 
@@ -183,19 +181,24 @@ public final class OutputBuffers
                 type,
                 version + 1,
                 false,
-                ImmutableMap.<OutputBufferId, Integer>builder()
+                ImmutableMap.<String, Integer>builder()
                         .putAll(buffers)
                         .put(bufferId, partition)
                         .build());
     }
 
-    public OutputBuffers withBuffers(Map<OutputBufferId, Integer> buffers)
+    /**
+     * Meger the {@link #buffers} with existing buffers if not buffers of the same id is linked to different page partition
+     * @param buffers
+     * @return
+     */
+    public OutputBuffers withBuffers(Map<String, Integer> buffers)
     {
         requireNonNull(buffers, "buffers is null");
 
-        Map<OutputBufferId, Integer> newBuffers = new HashMap<>();
-        for (Entry<OutputBufferId, Integer> entry : buffers.entrySet()) {
-            OutputBufferId bufferId = entry.getKey();
+        Map<String, Integer> newBuffers = new HashMap<>();
+        for (Entry<String, Integer> entry : buffers.entrySet()) {
+            String bufferId = entry.getKey();
             int partition = entry.getValue();
 
             // it is ok to have a duplicate buffer declaration but it must have the same page partition
@@ -230,7 +233,7 @@ public final class OutputBuffers
         return new OutputBuffers(type, version + 1, true, buffers);
     }
 
-    private void checkHasBuffer(OutputBufferId bufferId, int partition)
+    private void checkHasBuffer(String bufferId, int partition)
     {
         checkArgument(
                 Objects.equals(buffers.get(bufferId), partition),
@@ -238,54 +241,5 @@ public final class OutputBuffers
                 bufferId,
                 buffers.get(bufferId),
                 partition);
-    }
-
-    public static class OutputBufferId
-    {
-        // this is needed by JAX-RS
-        public static OutputBufferId fromString(String id)
-        {
-            return new OutputBufferId(parseInt(id));
-        }
-
-        private final int id;
-
-        @JsonCreator
-        public OutputBufferId(int id)
-        {
-            checkArgument(id >= 0, "id is negative");
-            this.id = id;
-        }
-
-        @Override
-        public boolean equals(Object o)
-        {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            OutputBufferId that = (OutputBufferId) o;
-            return id == that.id;
-        }
-
-        @JsonValue
-        public int getId()
-        {
-            return id;
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return id;
-        }
-
-        @Override
-        public String toString()
-        {
-            return String.valueOf(id);
-        }
     }
 }

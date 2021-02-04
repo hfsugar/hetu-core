@@ -557,22 +557,7 @@ public final class HttpPageBufferClient
 
                 // otherwise we must have gotten an OK response, everything else is considered fatal
                 if (response.getStatusCode() != HttpStatus.OK.code()) {
-                    StringBuilder body = new StringBuilder();
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getInputStream(), UTF_8))) {
-                        // Get up to 1000 lines for debugging
-                        for (int i = 0; i < 1000; i++) {
-                            String line = reader.readLine();
-                            // Don't output more than 100KB
-                            if (line == null || body.length() + line.length() > 100 * 1024) {
-                                break;
-                            }
-                            body.append(line + "\n");
-                        }
-                    }
-                    catch (RuntimeException | IOException e) {
-                        // Ignored. Just return whatever message we were able to decode
-                    }
-                    throw new PageTransportErrorException(format("Expected response code to be 200, but was %s:%n%s", response.getStatusCode(), body.toString()));
+                    handleFatalWithDetailErrorInfo(response);
                 }
 
                 // invalid content type can happen when an error page is returned, but is unlikely given the above 200
@@ -582,7 +567,7 @@ public final class HttpPageBufferClient
                 }
                 if (!mediaTypeMatches(contentType, PRESTO_PAGES_TYPE)) {
                     throw new PageTransportErrorException(format("Expected %s response from server but got %s",
-                        PRESTO_PAGES_TYPE, contentType));
+                            PRESTO_PAGES_TYPE, contentType));
                 }
 
                 String taskInstanceId = getTaskInstanceId(response);
@@ -601,6 +586,26 @@ public final class HttpPageBufferClient
             catch (PageTransportErrorException e) {
                 throw new PageTransportErrorException(format("Error fetching %s: %s", request.getUri().toASCIIString(), e.getMessage()), e);
             }
+        }
+
+        private void handleFatalWithDetailErrorInfo(Response response)
+        {
+            StringBuilder body = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getInputStream(), UTF_8))) {
+                // Get up to 1000 lines for debugging
+                for (int i = 0; i < 1000; i++) {
+                    String line = reader.readLine();
+                    // Don't output more than 100KB
+                    if (line == null || body.length() + line.length() > 100 * 1024) {
+                        break;
+                    }
+                    body.append(line + "\n");
+                }
+            }
+            catch (RuntimeException | IOException e) {
+                // Ignored. Just return whatever message we were able to decode
+            }
+            throw new PageTransportErrorException(format("Expected response code to be 200, but was %s:%n%s", response.getStatusCode(), body.toString()));
         }
 
         private static String getTaskInstanceId(Response response)

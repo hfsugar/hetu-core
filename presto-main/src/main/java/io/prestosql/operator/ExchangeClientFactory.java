@@ -17,6 +17,7 @@ import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.http.client.HttpClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.memory.context.LocalMemoryContext;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
@@ -46,6 +47,7 @@ public class ExchangeClientFactory
     private final ScheduledExecutorService scheduler;
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
+    private final boolean shuffleServiceEnabled;
 
     @Inject
     public ExchangeClientFactory(
@@ -60,6 +62,7 @@ public class ExchangeClientFactory
                 config.getMaxErrorDuration(),
                 config.isAcknowledgePages(),
                 config.getPageBufferClientMaxCallbackThreads(),
+                config.isShuffleServiceEnabled(),
                 httpClient,
                 scheduler);
     }
@@ -71,6 +74,7 @@ public class ExchangeClientFactory
             Duration maxErrorDuration,
             boolean acknowledgePages,
             int pageBufferClientMaxCallbackThreads,
+            boolean shuffleServiceEnabled,
             HttpClient httpClient,
             ScheduledExecutorService scheduler)
     {
@@ -79,6 +83,7 @@ public class ExchangeClientFactory
         this.maxErrorDuration = requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         this.acknowledgePages = acknowledgePages;
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
+        this.shuffleServiceEnabled = shuffleServiceEnabled;
 
         // Use only 0.75 of the maxResponseSize to leave room for additional bytes from the encoding
         // TODO figure out a better way to compute the size of data that will be transferred over the network
@@ -110,9 +115,12 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
+    public ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
     {
-        return new ExchangeClient(
+        if (shuffleServiceEnabled) {
+            return new StreamingExchangeClient(pagesSerde);
+        }
+        return new HttpExchangeClient(
                 maxBufferedBytes,
                 maxResponseSize,
                 concurrentRequestMultiplier,
@@ -121,6 +129,7 @@ public class ExchangeClientFactory
                 httpClient,
                 scheduler,
                 systemMemoryContext,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                pagesSerde);
     }
 }

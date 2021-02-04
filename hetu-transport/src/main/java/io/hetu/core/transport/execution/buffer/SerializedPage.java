@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.prestosql.spi.block.Block;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Properties;
@@ -32,7 +33,8 @@ public class SerializedPage
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SerializedPage.class).instanceSize();
 
-    private final Slice slice;
+    private Slice slice;
+    private Block[] blocks;
     private final int positionCount;
     private final int uncompressedSizeInBytes;
     private final byte pageCodecMarkers;
@@ -87,9 +89,28 @@ public class SerializedPage
         this(slice, markers, positionCount, uncompressedSizeInBytes, null);
     }
 
+    public SerializedPage(Block[] blocks, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
+    {
+        this.blocks = requireNonNull(blocks, "blocks is null");
+        this.positionCount = positionCount;
+        checkArgument(uncompressedSizeInBytes >= 0, "uncompressedSizeInBytes is negative");
+        this.uncompressedSizeInBytes = uncompressedSizeInBytes;
+        this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
+        this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
+    }
+
     public int getSizeInBytes()
     {
-        return slice.length();
+        if (slice != null) {
+            return slice.length();
+        }
+        else {
+            int size = 0;
+            for (Block block : blocks) {
+                size += block.getSizeInBytes();
+            }
+            return size;
+        }
     }
 
     @JsonProperty
@@ -100,7 +121,16 @@ public class SerializedPage
 
     public long getRetainedSizeInBytes()
     {
-        return INSTANCE_SIZE + slice.getRetainedSize();
+        if (slice != null) {
+            return INSTANCE_SIZE + slice.getRetainedSize();
+        }
+        else {
+            int size = 0;
+            for (Block block : blocks) {
+                size += block.getRetainedSizeInBytes();
+            }
+            return size;
+        }
     }
 
     @JsonProperty
@@ -112,7 +142,12 @@ public class SerializedPage
     @JsonProperty
     public byte[] getSliceArray()
     {
-        return slice.getBytes();
+        if (slice != null) {
+            return slice.getBytes();
+        }
+        else {
+            return null;
+        }
     }
 
     public Slice getSlice()
@@ -134,6 +169,16 @@ public class SerializedPage
     public boolean isEncrypted()
     {
         return ENCRYPTED.isSet(pageCodecMarkers);
+    }
+
+    public boolean isOffHeap()
+    {
+        return slice == null && blocks != null && blocks.length != 0;
+    }
+
+    public Block[] getBlocks()
+    {
+        return blocks;
     }
 
     @JsonProperty

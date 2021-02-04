@@ -15,6 +15,7 @@ package io.prestosql.spi.block;
 
 import io.prestosql.spi.util.BloomFilter;
 import nova.hetu.omnicache.vector.LongVec;
+import nova.hetu.omnicache.vector.Vec;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
@@ -114,6 +115,18 @@ public class LongArrayBlock
     public LongVec getValues()
     {
         return values;
+    }
+
+    @Override
+    public Vec getVec()
+    {
+        return values;
+    }
+
+    @Override
+    public boolean isOffHeap()
+    {
+        return true;
     }
 
     @Override

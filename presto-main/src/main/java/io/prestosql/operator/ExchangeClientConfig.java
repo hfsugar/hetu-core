@@ -36,6 +36,7 @@ public class ExchangeClientConfig
     private int clientThreads = 25;
     private int pageBufferClientMaxCallbackThreads = 25;
     private boolean acknowledgePages = true;
+    private boolean shuffleServiceEnabled = true;
 
     @NotNull
     public DataSize getMaxBufferSize()
@@ -139,6 +140,18 @@ public class ExchangeClientConfig
     public ExchangeClientConfig setAcknowledgePages(boolean acknowledgePages)
     {
         this.acknowledgePages = acknowledgePages;
+        return this;
+    }
+
+    public boolean isShuffleServiceEnabled()
+    {
+        return shuffleServiceEnabled;
+    }
+
+    @Config("exchange.shuffle-service-enabled")
+    public ExchangeClientConfig setShuffleServiceEnabled(boolean shuffleServiceEnabled)
+    {
+        this.shuffleServiceEnabled = shuffleServiceEnabled;
         return this;
     }
 }

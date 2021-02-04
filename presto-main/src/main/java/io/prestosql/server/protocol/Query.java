@@ -23,9 +23,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
-import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.Session;
 import io.prestosql.client.ClientTypeSignature;
 import io.prestosql.client.ClientTypeSignatureParameter;
@@ -92,7 +89,6 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.concurrent.MoreFutures.addTimeout;
-import static io.prestosql.SystemSessionProperties.isExchangeCompressionEnabled;
 import static io.prestosql.execution.QueryState.FAILED;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.prestosql.util.Failures.toFailure;
@@ -115,8 +111,6 @@ public class Query
 
     private final Executor resultsProcessorExecutor;
     private final ScheduledExecutorService timeoutExecutor;
-
-    private final PagesSerde serde;
 
     @GuardedBy("this")
     private OptionalLong nextToken = OptionalLong.of(0);
@@ -217,8 +211,6 @@ public class Query
         this.exchangeClient = exchangeClient;
         this.resultsProcessorExecutor = resultsProcessorExecutor;
         this.timeoutExecutor = timeoutExecutor;
-
-        serde = new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)).createPagesSerde();
     }
 
     public void cancel()
@@ -292,6 +284,9 @@ public class Query
         return clearTransactionId;
     }
 
+    /**
+     * Wait for the final results to be returned to SQL submission entry point
+     */
     public synchronized ListenableFuture<QueryResults> waitForResults(long token, UriInfo uriInfo, String scheme, Duration wait, DataSize targetResultSize)
     {
         // before waiting, check if this request has already been processed and cached
@@ -441,12 +436,11 @@ public class Query
             long rows = 0;
             long targetResultBytes = targetResultSize.toBytes();
             while (bytes < targetResultBytes) {
-                SerializedPage serializedPage = exchangeClient.pollPage();
-                if (serializedPage == null) {
+                Page page = exchangeClient.pollPage();
+                if (page == null) {
                     break;
                 }
 
-                Page page = serde.deserialize(serializedPage);
                 bytes += page.getLogicalSizeInBytes();
                 rows += page.getPositionCount();
                 pages.add(new RowIterable(session.toConnectorSession(), types, page));
@@ -576,24 +570,20 @@ public class Query
         // client while holding the lock because the query may transition to the finished state when the
         // last page is removed.  If another thread observes this state before the response is cached
         // the pages will be lost.
-        List<SerializedPage> data = null;
+        List<Page> data = null;
         try {
-            ImmutableList.Builder<SerializedPage> builder = new ImmutableList.Builder<>();
+            ImmutableList.Builder<Page> builder = new ImmutableList.Builder<>();
             long bytes = 0;
             long rows = 0;
             long targetResultBytes = targetResultSize.toBytes();
             while (bytes < targetResultBytes) {
-                SerializedPage serializedPage = exchangeClient.pollPage();
-                if (serializedPage == null) {
+                Page page = exchangeClient.pollPage();
+                if (page == null) {
                     break;
                 }
-                builder.add(new SerializedPage(
-                        serializedPage.getSlice().getBytes(),
-                        serializedPage.getPageCodecMarkers(),
-                        serializedPage.getPositionCount(),
-                        serializedPage.getUncompressedSizeInBytes()));
-                bytes += serializedPage.getUncompressedSizeInBytes();
-                rows += serializedPage.getPositionCount();
+                builder.add(page);
+                bytes += page.getLogicalSizeInBytes();
+                rows += page.getPositionCount();
             }
             if (rows > 0) {
                 // client implementations do not properly handle empty list of data
@@ -619,12 +609,7 @@ public class Query
             BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(0);
             BooleanType.BOOLEAN.writeBoolean(blockBuilder, true);
             Page page = pageBuilder.build();
-            SerializedPage serializedPage = serde.serialize(page);
-            data = Collections.singletonList(new SerializedPage(
-                    serializedPage.getSlice().getBytes(),
-                    serializedPage.getPageCodecMarkers(),
-                    serializedPage.getPositionCount(),
-                    serializedPage.getUncompressedSizeInBytes()));
+            data = ImmutableList.of(page);
         }
         else if (queryInfo.isRunningAsync()) {
             columns = ImmutableList.of(createColumn("result", BooleanType.BOOLEAN),
@@ -635,12 +620,7 @@ public class Query
             BooleanType.BOOLEAN.writeBoolean(blockBuilder, true);
             BooleanType.BOOLEAN.writeBoolean(blockBuilder, true);
             Page page = pageBuilder.build();
-            SerializedPage serializedPage = serde.serialize(page);
-            data = Collections.singletonList(new SerializedPage(
-                    serializedPage.getSlice().getBytes(),
-                    serializedPage.getPageCodecMarkers(),
-                    serializedPage.getPositionCount(),
-                    serializedPage.getUncompressedSizeInBytes()));
+            data = ImmutableList.of(page);
         }
 
         // advance next token
@@ -742,7 +722,7 @@ public class Query
             exchangeClient.addLocation(outputLocation);
         }
         if (outputInfo.isNoMoreBufferLocations()) {
-            exchangeClient.noMoreLocations();
+            exchangeClient.setNoMoreLocation();
         }
     }
 
