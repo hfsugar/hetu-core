@@ -45,9 +45,7 @@ public class HashAggregationOmniOperator
     public HashAggregationOmniOperator(OperatorContext operatorContext, OmniRuntime omniRuntime, List<String> compileID)
     {
         this.operatorContext = operatorContext;
-        int driverId = this.operatorContext.getDriverContext().getDriverId();
-        String taskId = this.operatorContext.getDriverContext().getTaskId().getFullId();
-        this.omniKey = taskId + driverId;
+        this.omniKey = Thread.currentThread().getName().substring(0,Thread.currentThread().getName().lastIndexOf("-"));
         this.omniRuntime = omniRuntime;
         this.compileID = compileID;
     }
