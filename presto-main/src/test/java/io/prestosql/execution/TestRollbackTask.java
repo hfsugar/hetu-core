@@ -16,6 +16,7 @@ package io.prestosql.execution;
 
 import io.prestosql.Session;
 import io.prestosql.Session.SessionBuilder;
+import io.prestosql.execution.ddl.RollbackTask;
 import io.prestosql.execution.warnings.WarningCollector;
 import io.prestosql.filesystem.FileSystemClientManager;
 import io.prestosql.heuristicindex.HeuristicIndexerManager;

@@ -16,8 +16,9 @@ package io.prestosql.execution.buffer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.execution.StateMachine;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.memory.context.SimpleLocalMemoryContext;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.BigintType;
@@ -53,6 +54,7 @@ import static io.prestosql.execution.buffer.BufferTestUtils.sizeOfPages;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static io.prestosql.execution.buffer.OutputBuffers.createInitialEmptyOutputBuffers;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
+import static io.prestosql.metadata.MetadataManager.createTestMetadataManager;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.testng.Assert.assertEquals;
@@ -62,13 +64,14 @@ import static org.testng.Assert.fail;
 
 public class TestPartitionedOutputBuffer
 {
-    private static final String TASK_INSTANCE_ID = "task-instance-id";
+    private static final java.lang.String TASK_INSTANCE_ID = "task-instance-id";
     private static final ImmutableList<BigintType> TYPES = ImmutableList.of(BIGINT);
-    private static final OutputBufferId FIRST = new OutputBufferId(0);
-    private static final OutputBufferId SECOND = new OutputBufferId(1);
-    private static final OutputBufferId THIRD = new OutputBufferId(2);
+    private static final String FIRST = String.valueOf(0);
+    private static final String SECOND = String.valueOf(1);
+    private static final String THIRD = String.valueOf(2);
 
     private ScheduledExecutorService stateNotificationExecutor;
+    private final PagesSerde serde = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false).createPagesSerde();
 
     @BeforeClass
     public void setUp()
@@ -334,7 +337,7 @@ public class TestPartitionedOutputBuffer
             buffer.setOutputBuffers(createInitialEmptyOutputBuffers(PARTITIONED)
                     .withBuffer(FIRST, 0)
                     .withBuffer(SECOND, 0)
-                    .withNoMoreBufferIds());
+                    .withNoMoreBufferIds(), serde);
             fail("Expected IllegalStateException from addQueue after noMoreQueues has been called");
         }
         catch (IllegalArgumentException ignored) {
@@ -844,7 +847,7 @@ public class TestPartitionedOutputBuffer
                 buffers,
                 dataSize,
                 () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                stateNotificationExecutor);
+                stateNotificationExecutor, serde);
     }
 
     private static BufferResult bufferResult(long token, Page firstPage, Page... otherPages)

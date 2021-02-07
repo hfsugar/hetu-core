@@ -104,7 +104,6 @@ public class PagesSerde
     public Page deserialize(SerializedPage serializedPage)
     {
         checkArgument(serializedPage != null, "serializedPage is null");
-
         Slice slice = serializedPage.getSlice();
 
         if (serializedPage.isEncrypted()) {

@@ -18,7 +18,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.prestosql.execution.buffer.ClientBuffer.PagesSupplier;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.BigintType;
 import org.testng.annotations.Test;
@@ -51,10 +50,10 @@ import static org.testng.Assert.fail;
 
 public class TestClientBuffer
 {
-    private static final String TASK_INSTANCE_ID = "task-instance-id";
+    private static final java.lang.String TASK_INSTANCE_ID = "task-instance-id";
     private static final ImmutableList<BigintType> TYPES = ImmutableList.of(BIGINT);
-    private static final OutputBufferId BUFFER_ID = new OutputBufferId(33);
-    private static final String INVALID_SEQUENCE_ID = "Invalid sequence id";
+    private static final String BUFFER_ID = String.valueOf(33);
+    private static final java.lang.String INVALID_SEQUENCE_ID = "Invalid sequence id";
 
     @Test
     public void testSimplePushBuffer()
@@ -402,7 +401,7 @@ public class TestClientBuffer
                         bufferedPages,
                         pagesSent,
                         new PageBufferInfo(
-                                BUFFER_ID.getId(),
+                                Integer.valueOf(BUFFER_ID),
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row

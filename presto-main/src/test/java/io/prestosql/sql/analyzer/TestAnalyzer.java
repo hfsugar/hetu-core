@@ -31,6 +31,7 @@ import io.prestosql.metadata.InternalNodeManager;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.metadata.QualifiedObjectName;
 import io.prestosql.metadata.SessionPropertyManager;
+import io.prestosql.operator.ExchangeClientConfig;
 import io.prestosql.security.AccessControl;
 import io.prestosql.security.AccessControlManager;
 import io.prestosql.security.AllowAllAccessControl;
@@ -583,6 +584,7 @@ public class TestAnalyzer
                 new TaskManagerConfig(),
                 new MemoryManagerConfig(),
                 new FeaturesConfig().setMaxGroupingSets(2048),
+                new ExchangeClientConfig(),
                 new HetuConfig()))).build();
         analyze(session, "SELECT a, b, c, d, e, f, g, h, i, j, k, SUM(l)" +
                 "FROM (VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))\n" +

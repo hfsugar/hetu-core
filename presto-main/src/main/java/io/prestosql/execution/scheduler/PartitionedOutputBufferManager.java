@@ -15,7 +15,6 @@ package io.prestosql.execution.scheduler;
 
 import com.google.common.collect.ImmutableMap;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.sql.planner.PartitioningHandle;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -32,15 +31,15 @@ import static java.util.Objects.requireNonNull;
 public class PartitionedOutputBufferManager
         implements OutputBufferManager
 {
-    private final Map<OutputBufferId, Integer> outputBuffers;
+    private final Map<String, Integer> outputBuffers;
 
     public PartitionedOutputBufferManager(PartitioningHandle partitioningHandle, int partitionCount, Consumer<OutputBuffers> outputBufferTarget)
     {
         checkArgument(partitionCount >= 1, "partitionCount must be at least 1");
 
-        ImmutableMap.Builder<OutputBufferId, Integer> partitions = ImmutableMap.builder();
+        ImmutableMap.Builder<String, Integer> partitions = ImmutableMap.builder();
         for (int partition = 0; partition < partitionCount; partition++) {
-            partitions.put(new OutputBufferId(partition), partition);
+            partitions.put(String.valueOf(partition), partition);
         }
 
         OutputBuffers outputBuffers = createInitialEmptyOutputBuffers(requireNonNull(partitioningHandle, "partitioningHandle is null"))
@@ -52,16 +51,16 @@ public class PartitionedOutputBufferManager
     }
 
     @Override
-    public void addOutputBuffers(List<OutputBufferId> newBuffers, boolean noMoreBuffers)
+    public void addOutputBuffers(List<String> newBuffers, boolean noMoreBuffers)
     {
         // All buffers are created in the constructor, so just validate that this isn't
         // a request to add a new buffer
-        for (OutputBufferId newBuffer : newBuffers) {
+        for (String newBuffer : newBuffers) {
             Integer existingBufferId = outputBuffers.get(newBuffer);
             if (existingBufferId == null) {
                 throw new IllegalStateException("Unexpected new output buffer " + newBuffer);
             }
-            if (newBuffer.getId() != existingBufferId) {
+            if (newBuffer.equals(existingBufferId)) {
                 throw new IllegalStateException("newOutputBuffers has changed the assignment for task " + newBuffer);
             }
         }

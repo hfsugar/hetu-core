@@ -128,6 +128,11 @@ public abstract class AbstractOperatorBenchmark
                 new AllowAllAccessControl());
     }
 
+    private static List<Split> getNextBatch(SplitSource splitSource)
+    {
+        return getFutureValue(splitSource.getNextBatch(NOT_PARTITIONED, Lifespan.taskWide(), 1000)).getSplits();
+    }
+
     @Override
     protected void tearDown()
     {
@@ -200,7 +205,7 @@ public abstract class AbstractOperatorBenchmark
         };
     }
 
-    private Split getLocalQuerySplit(Session session, TableHandle handle)
+    Split getLocalQuerySplit(Session session, TableHandle handle)
     {
         SplitSource splitSource = localQueryRunner.getSplitManager().getSplits(session, handle, UNGROUPED_SCHEDULING, null, Optional.empty(), Collections.emptyMap(), ImmutableSet.of(), false);
         List<Split> splits = new ArrayList<>();
@@ -209,11 +214,6 @@ public abstract class AbstractOperatorBenchmark
         }
         checkArgument(splits.size() == 1, "Expected only one split for a local query, but got %s splits", splits.size());
         return splits.get(0);
-    }
-
-    private static List<Split> getNextBatch(SplitSource splitSource)
-    {
-        return getFutureValue(splitSource.getNextBatch(NOT_PARTITIONED, Lifespan.taskWide(), 1000)).getSplits();
     }
 
     protected final OperatorFactory createHashProjectOperator(int operatorId, PlanNodeId planNodeId, List<Type> types)
@@ -256,7 +256,6 @@ public abstract class AbstractOperatorBenchmark
     protected Map<String, Long> execute(TaskContext taskContext)
     {
         List<Driver> drivers = createDrivers(taskContext);
-
         long peakMemory = 0;
         boolean done = false;
         while (!done) {
@@ -274,6 +273,7 @@ public abstract class AbstractOperatorBenchmark
             }
             done = !processed;
         }
+
         return ImmutableMap.of("peak_memory", peakMemory);
     }
 

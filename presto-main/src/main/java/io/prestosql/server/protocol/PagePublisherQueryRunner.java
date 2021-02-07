@@ -19,6 +19,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.Session;
 import io.prestosql.client.DataCenterQueryResults;
 import io.prestosql.client.StatementStats;
@@ -51,6 +53,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static io.prestosql.SystemSessionProperties.isExchangeCompressionEnabled;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.prestosql.statestore.StateStoreConstants.CROSS_LAYER_DYNAMIC_FILTER;
 import static io.prestosql.statestore.StateStoreConstants.CROSS_REGION_DYNAMIC_FILTER_COLLECTION;
@@ -218,9 +221,10 @@ public class PagePublisherQueryRunner
             throw badRequest(NOT_FOUND, "Query not found");
         }
 
+        final PagesSerde pagesSerde = new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)).createPagesSerde();
         ExchangeClient exchangeClient = this.exchangeClientSupplier.get(
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(),
-                        DataCenterStatementResource.class.getSimpleName()));
+                        DataCenterStatementResource.class.getSimpleName()), pagesSerde);
         return Query.create(session, slug, queryManager, exchangeClient, executor, timeoutExecutor,
                 blockEncodingSerde);
     }

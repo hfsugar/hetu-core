@@ -350,7 +350,7 @@ public class WorkProcessorPipelineSourceOperator
     }
 
     @Override
-    public void noMoreSplits()
+    public void setNoMoreSplits()
     {
         blockedOnSplits.set(null);
         sourceOperator = null;
@@ -407,7 +407,7 @@ public class WorkProcessorPipelineSourceOperator
     {
         // operator is finished early without waiting for all pages to process
         operatorFinishing = true;
-        noMoreSplits();
+        setNoMoreSplits();
         closeOperators(workProcessorOperatorContexts.size() - 1);
     }
 

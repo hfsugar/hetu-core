@@ -30,7 +30,6 @@ import io.prestosql.connector.CatalogName;
 import io.prestosql.execution.buffer.BufferResult;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffer;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import io.prestosql.execution.buffer.PartitionedOutputBuffer;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.memory.MemoryPool;
@@ -59,6 +58,8 @@ import io.prestosql.spi.type.Type;
 import io.prestosql.spiller.SpillSpaceTracker;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -109,7 +110,7 @@ import static org.testng.Assert.assertFalse;
 @Test(singleThreaded = true)
 public class TestSqlTaskExecution
 {
-    private static final OutputBufferId OUTPUT_BUFFER_ID = new OutputBufferId(0);
+    private static final String OUTPUT_BUFFER_ID = String.valueOf(0);
     private static final CatalogName CONNECTOR_ID = new CatalogName("test");
     private static final Duration ASSERT_WAIT_TIMEOUT = new Duration(1, HOURS);
 
@@ -147,12 +148,13 @@ public class TestSqlTaskExecution
             //
             // See #testComplex for all the bahaviors that are tested. Not all of them apply here.
             TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
+            final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     1,
                     TABLE_SCAN_NODE_ID,
                     outputBuffer,
                     Function.identity(),
-                    new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false));
+                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC), true);
             LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
                     ImmutableList.of(new DriverFactory(
                             0,
@@ -168,6 +170,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
+                    ImmutableList.of(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,
@@ -369,12 +372,13 @@ public class TestSqlTaskExecution
                     301,
                     values3NodeId,
                     ImmutableList.of(new Page(createStringsBlock("x", "y", "multiplier3"))));
+            final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     4,
                     joinCNodeId,
                     outputBuffer,
                     Function.identity(),
-                    new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false));
+                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC), true);
             TestingCrossJoinOperatorFactory joinOperatorFactoryA = new TestingCrossJoinOperatorFactory(2, joinANodeId, buildStatesA);
             TestingCrossJoinOperatorFactory joinOperatorFactoryB = new TestingCrossJoinOperatorFactory(102, joinBNodeId, buildStatesB);
             TestingCrossJoinOperatorFactory joinOperatorFactoryC = new TestingCrossJoinOperatorFactory(3, joinCNodeId, buildStatesC);
@@ -419,6 +423,7 @@ public class TestSqlTaskExecution
                     taskStateMachine,
                     taskContext,
                     outputBuffer,
+                    ImmutableList.of(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC)),
                     ImmutableList.of(),
                     localExecutionPlan,
                     taskExecutor,
@@ -614,7 +619,8 @@ public class TestSqlTaskExecution
                         .withNoMoreBufferIds(),
                 new DataSize(1, MEGABYTE),
                 () -> new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                taskNotificationExecutor);
+                taskNotificationExecutor,
+                new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false).createPagesSerde());
     }
 
     private <T> void waitUntilEquals(Supplier<T> actualSupplier, T expected, Duration timeout)
@@ -637,12 +643,12 @@ public class TestSqlTaskExecution
     private static class OutputBufferConsumer
     {
         private final OutputBuffer outputBuffer;
-        private final OutputBufferId outputBufferId;
+        private final String outputBufferId;
         private int sequenceId;
         private int surplusPositions;
         private boolean bufferComplete;
 
-        public OutputBufferConsumer(OutputBuffer outputBuffer, OutputBufferId outputBufferId)
+        public OutputBufferConsumer(OutputBuffer outputBuffer, String outputBufferId)
         {
             this.outputBuffer = outputBuffer;
             this.outputBufferId = outputBufferId;
@@ -840,7 +846,7 @@ public class TestSqlTaskExecution
             }
 
             @Override
-            public void noMoreSplits()
+            public void setNoMoreSplits()
             {
                 if (split == null) {
                     finish();
