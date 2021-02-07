@@ -101,7 +101,7 @@ public class LongArrayBlock
             throw new IllegalArgumentException("values length is less than positionCount");
         }
         this.values = longVec;
-
+        this.values.incrRefCount();
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
         }
@@ -260,6 +260,7 @@ public class LongArrayBlock
             }
             newValues[i] = values.get(position + arrayOffset);
         }
+        this.values.release();
         return new LongArrayBlock(0, length, newValueIsNull, newValues);
     }
 
@@ -267,6 +268,7 @@ public class LongArrayBlock
     public Block getRegion(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
+        //todo need double check if offset == 0 and length == getPositionCount ,is need update Vec Reference Cnt?
         return new LongArrayBlock(positionOffset + arrayOffset, length, valueIsNull, values);
     }
 
