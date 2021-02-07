@@ -28,7 +28,6 @@ public class PageProducer
 {
     public static final Logger LOG = Logger.getLogger(PageProducer.class);
     private final Stream stream;
-    private boolean isClosed;
 
     public PageProducer(String producerId, PagesSerde pagesSerde, Stream.Type type)
     {
@@ -51,13 +50,12 @@ public class PageProducer
     public void close()
             throws Exception
     {
-        isClosed = true;
         stream.close();
     }
 
     public boolean isClosed()
     {
-        return isClosed;
+        return stream.isClosed();
     }
 
     public void onClosed(Consumer<Boolean> handler)
