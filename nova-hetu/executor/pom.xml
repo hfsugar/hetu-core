@@ -82,5 +82,10 @@
             <artifactId>reactor-core</artifactId>
             <version>3.4.0</version>
         </dependency>
+        <dependency>
+            <groupId>org.openucx</groupId>
+            <artifactId>jucx</artifactId>
+            <version>1.9.0</version>
+        </dependency>
     </dependencies>
 </project>

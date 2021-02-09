@@ -18,7 +18,7 @@ import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 import nova.hetu.shuffle.inmemory.LocalShuffleClient;
-import nova.hetu.shuffle.rsocket.RsShuffleClient;
+import nova.hetu.shuffle.ucx.UcxShuffleClient;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -68,7 +68,8 @@ public class PageConsumer
         }
 
         if (producerInfo.getHost().equals("127.0.0.1") || myIP.equals(producerInfo.getHost())) {
-            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
+            // TODO: in memory is not work right now.
+//            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
         }
 
         return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
@@ -85,7 +86,7 @@ public class PageConsumer
                 break;
             case STANDARD:
                 // TODO: pass in an event listener to handler success and failure events
-                shuffleClient = new RsShuffleClient();
+                shuffleClient = new UcxShuffleClient();
                 break;
             default:
                 throw new RuntimeException("Unsupported PageConsumer type: " + commMode);

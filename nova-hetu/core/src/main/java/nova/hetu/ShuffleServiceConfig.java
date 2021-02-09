@@ -16,9 +16,13 @@ package nova.hetu;
 
 import io.airlift.configuration.Config;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 public class ShuffleServiceConfig
 {
     private boolean enabled = true;
+    private String host;
     private int port = 16544;
 
     public boolean isEnabled()
@@ -30,6 +34,26 @@ public class ShuffleServiceConfig
     public ShuffleServiceConfig setEnabled(boolean enabled)
     {
         this.enabled = enabled;
+        return this;
+    }
+
+    public String getHost()
+    {
+        if (host == null) {
+            try {
+                return InetAddress.getLocalHost().getHostAddress();
+            }
+            catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+        }
+        return this.host;
+    }
+
+    @Config("shuffle-service.host")
+    public ShuffleServiceConfig setHost(String host)
+    {
+        this.host = host;
         return this;
     }
 

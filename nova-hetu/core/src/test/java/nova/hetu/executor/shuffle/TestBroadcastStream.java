@@ -16,9 +16,9 @@ package nova.hetu.executor.shuffle;
 
 import com.google.common.collect.ImmutableList;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
-import nova.hetu.RsServer;
 import nova.hetu.ShuffleServer;
 import nova.hetu.ShuffleServiceConfig;
+import nova.hetu.UcxServer;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.ProducerInfo;
@@ -41,12 +41,15 @@ public class TestBroadcastStream
     public void setup()
             throws InterruptedException
     {
-        shuffleServer = new RsServer(new ShuffleServiceConfig());
+        shuffleServer = new UcxServer(new ShuffleServiceConfig().setHost(TEST_SHUFFLE_SERVICE_HOST));
         shuffleServer.start();
     }
 
     @AfterSuite
-    public void tearDown() {}
+    public void tearDown()
+    {
+        shuffleServer.shutdown();
+    }
 
     @Test
     public void TestSingleProducerSingleConsumer()
@@ -261,8 +264,8 @@ public class TestBroadcastStream
 
         PageConsumer consumer = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId1), serde);
         PageConsumer consumer2 = PageConsumer.create(new ProducerInfo(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId + "-" + bufferId2), serde);
-        Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 10);
-        Thread consumerThread2 = ShuffleServiceTestUtil.createConsumerThread(consumer2, result2, 10);
+        Thread consumerThread = ShuffleServiceTestUtil.createConsumerThread(consumer, result, 20);
+        Thread consumerThread2 = ShuffleServiceTestUtil.createConsumerThread(consumer2, result2, 20);
 
         producerThread.start();
         consumerThread.start();
