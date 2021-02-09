@@ -15,6 +15,7 @@ package io.prestosql.spi.block;
 
 import io.airlift.slice.Slice;
 import io.prestosql.spi.util.BloomFilter;
+import nova.hetu.omnicache.vector.Vec;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import java.util.function.BiConsumer;
@@ -91,6 +92,22 @@ public interface Block<T>
     default <R> R getObject(int position, Class<R> clazz)
     {
         throw new UnsupportedOperationException(getClass().getName());
+    }
+
+    /**
+     * Get vector data.
+     */
+    default Vec getVec()
+    {
+        return null;
+    }
+
+    /**
+     * Whether this block is off heap byte buffer.
+     */
+    default boolean isOffHeap()
+    {
+        return false;
     }
 
     /**

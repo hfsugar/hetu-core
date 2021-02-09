@@ -1,0 +1,6 @@
+need install ucx first:
+$ wget https://github.com/openucx/ucx/releases/download/v1.9.0/ucx-1.9.0.tar.gz
+$ ./autogen.sh
+$ ./contrib/configure-release -with-java -enable-mt
+$ make -j8
+$ make install

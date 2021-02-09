@@ -16,6 +16,8 @@ package nova.hetu.shuffle.ucx;
 
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
+import io.prestosql.spi.block.Block;
+import nova.hetu.omnicache.vector.Vec;
 import nova.hetu.shuffle.stream.Stream;
 import nova.hetu.shuffle.stream.StreamManager;
 import nova.hetu.shuffle.ucx.memory.RegisteredMemory;
@@ -194,7 +196,7 @@ public class UcxShuffleService
         {
             this.producerId = producerId;
             this.id = id;
-            this.stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.RDMA);
+            this.stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
             this.sendId = 0;
         }
 
@@ -216,7 +218,7 @@ public class UcxShuffleService
                 long maxWait = 10000;
                 long sleepInterval = 50;
                 while (stream == null && maxWait > 0) {
-                    stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.RDMA);
+                    stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
                     try {
                         maxWait -= sleepInterval;
                         Thread.sleep(sleepInterval);
@@ -268,11 +270,8 @@ public class UcxShuffleService
             });
         }
 
-        private void sendPage(SerializedPage page, long tag)
+        private RegisteredMemory onHeapMemory(long tag, SerializedPage page)
         {
-            // we register the memory and send the msg
-            // TODO: register at serialization step;
-
             byte[] slice = page.getSliceArray();
             ByteBuffer pageBuffer = ByteBuffer.allocateDirect(slice.length);
             // will free by client when client UcpRemoteKey.close()
@@ -284,17 +283,64 @@ public class UcxShuffleService
             UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
                     pageMemory.getAddress(),
                     pageMemory.getLength(),
+                    page.getPositionCount(),
                     pageMemory.getRemoteKeyBuffer(),
                     pageBuffer.hashCode());
 
-            UcxPageMessage.Builder builder = new UcxPageMessage.Builder(ucxMemoryPool);
-            RegisteredMemory buffer = builder
+            UcxPageMessage.Builder builder = new UcxPageMessage.Builder(ucxMemoryPool)
                     .addBlockMetadata(blockMetadata)
+                    .setOffHeap(false)
                     .setPageCodecMarkers(page.getPageCodecMarkers())
                     .setPositionCount(page.getPositionCount())
-                    .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes())
-                    .build();
-            log.trace("Server send page: [" + tag + "] [" + id + "] " + builder.toString());
+                    .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes());
+
+            log.trace("Server send on heap page: [" + tag + "]" + builder.toString());
+
+            return builder.build();
+        }
+
+        private RegisteredMemory offHeapMemory(long tag, SerializedPage page)
+        {
+            UcxPageMessage.Builder builder = new UcxPageMessage.Builder(ucxMemoryPool)
+                    .setOffHeap(true)
+                    .setPageCodecMarkers(page.getPageCodecMarkers())
+                    .setPositionCount(page.getPositionCount())
+                    .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes());
+
+            Block[] blocks = page.getBlocks();
+            for (int blockId = 0; blockId < blocks.length; blockId++) {
+                Vec vec = blocks[blockId].getVec();
+                ByteBuffer blockBuffer = vec.getData();
+                // will free by client when client UcpRemoteKey.close()
+                UcpMemory blockMemory = context.registerMemory(blockBuffer);
+                resources.push(blockMemory);
+
+                UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
+                        blockMemory.getAddress(),
+                        blockMemory.getLength(),
+                        blocks[blockId].getPositionCount(),
+                        blockMemory.getRemoteKeyBuffer(),
+                        blockBuffer.hashCode());
+
+                builder.addBlockMetadata(blockMetadata);
+            }
+
+            log.trace("Server send off heap page: [" + tag + "]" + builder.toString());
+
+            return builder.build();
+        }
+
+        private void sendPage(SerializedPage page, long tag)
+        {
+            // we register the memory and send the msg
+            RegisteredMemory buffer;
+            if (page.isOffHeap()) {
+                buffer = offHeapMemory(tag, page);
+            }
+            else {
+                buffer = onHeapMemory(tag, page);
+            }
+
             endpoint.sendTaggedNonBlocking(buffer.getBuffer(), tag, new UcxCallback()
             {
                 @Override

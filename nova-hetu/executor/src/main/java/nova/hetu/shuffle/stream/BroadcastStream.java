@@ -55,7 +55,7 @@ public class BroadcastStream
     {
         this.id = id;
         this.serde = serde;
-        this.commMode = PagesSerde.CommunicationMode.STANDARD;
+        this.commMode = PagesSerde.CommunicationMode.UCX;
     }
 
     @Override
@@ -84,7 +84,7 @@ public class BroadcastStream
             throws InterruptedException
     {
         List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
-                .map(serde::serialize)
+                .map(p -> PageSerializeUtil.serialize(serde, p))
                 .collect(Collectors.toList());
 
         if (!channelsAdded) {

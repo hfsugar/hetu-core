@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.spi.Page;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.ProducerInfo;
 
@@ -44,11 +45,13 @@ public class StreamingExchangeClient
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ConcurrentHashMap<URI, PageConsumer> pageConsumers = new ConcurrentHashMap<>();
     private final Queue<PageConsumer> activePageConsumers = new LinkedList<>();
+    private final PagesSerde.CommunicationMode defaultTransType;
     private boolean noMoreLocation;
 
-    public StreamingExchangeClient(PagesSerde pagesSerde)
+    public StreamingExchangeClient(PagesSerde pagesSerde, ShuffleServiceConfig.TransportType transportType)
     {
         this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
+        this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
     }
 
     @Override
@@ -62,7 +65,7 @@ public class StreamingExchangeClient
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
         if (!pageConsumers.containsKey(location)) {
-            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, false);
+            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, false);
             pageConsumers.put(location, pageConsumer);
             activePageConsumers.offer(pageConsumer);
         }

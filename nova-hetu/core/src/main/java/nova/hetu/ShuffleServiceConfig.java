@@ -24,6 +24,7 @@ public class ShuffleServiceConfig
     private boolean enabled = true;
     private String host;
     private int port = 16544;
+    private TransportType transportType = TransportType.UCX;
 
     public boolean isEnabled()
     {
@@ -67,5 +68,23 @@ public class ShuffleServiceConfig
     {
         this.port = port;
         return this;
+    }
+
+    @Config("shuffle-service.transport")
+    public ShuffleServiceConfig setTransportType(TransportType transportType)
+    {
+        this.transportType = transportType;
+        return this;
+    }
+
+    public TransportType getTransportType()
+    {
+        return transportType;
+    }
+
+    public enum TransportType
+    {
+        RSOCKET,
+        UCX
     }
 }

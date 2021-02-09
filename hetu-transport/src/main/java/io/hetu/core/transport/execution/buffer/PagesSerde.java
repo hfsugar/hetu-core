@@ -44,8 +44,8 @@ public class PagesSerde
     public enum CommunicationMode
     {
         INMEMORY,
-        RDMA,
-        STANDARD
+        RSOCKET,
+        UCX
     }
 
     private static final double MINIMUM_COMPRESSION_RATIO = 0.8;

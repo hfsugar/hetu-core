@@ -72,7 +72,7 @@ public class BasicStream
     @Override
     public void setCommunicationMode()
     {
-        commMode = PagesSerde.CommunicationMode.STANDARD;
+        commMode = PagesSerde.CommunicationMode.UCX;
     }
 
     @Override
@@ -95,7 +95,7 @@ public class BasicStream
             throw new IllegalStateException("Stream has already been closed");
         }
         for (Page splittedPage : splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES)) {
-            SerializedPage serializedPage = serde.serialize(splittedPage, commMode);
+            SerializedPage serializedPage = PageSerializeUtil.serialize(serde, splittedPage);
             queue.put(serializedPage);
         }
     }

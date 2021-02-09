@@ -31,18 +31,19 @@ public class UcxPageMessage
         extends UcxMessage
 {
     // Page metadata is an array of blocks:
-    // | blockNumber(4B) | pageCodecMarkers(1B) | positionCount(4B) | uncompressedSizeInBytes(4B) |
+    // | blockNumber(4B) | pageCodecMarkers(1B) | offHeap(1B) | positionCount(4B) | uncompressedSizeInBytes(4B) |
     // | block0 | block1 | block2 | block3 | block4 | block5 |
     // Each block in page metadata has next layout:
-    // | dataAddress(8B) | dataSize(8B) | dataHashCode(4B) | dataRkeySize(4B) |dataRkey(dataRkeySize Bytes) |
+    // | dataAddress(8B) | dataSize(8B) | dataPositionCount(4B) | dataHashCode(4B) | dataRkeySize(4B) |dataRkey(dataRkeySize Bytes) |
 
     private static final int MAX_RKEY_SIZE = 150;
-    private static final int PAGE_METADATA_HEADER_SIZE = INT_SIZE * 3 + BYTE_SIZE;
+    private static final int PAGE_METADATA_HEADER_SIZE = INT_SIZE * 3 + BYTE_SIZE * 2;
     private static final int BLOCK_METADATA_SIZE = LONG_SIZE * 2 + INT_SIZE + MAX_RKEY_SIZE;
     private static final Logger log = Logger.getLogger(UcxPageMessage.class);
     private final ByteBuffer data;
     private final int blockNumber;
     private final byte pageCodecMarkers;
+    private final boolean offHeap;
     private final int positionCount;
     private final int uncompressedSizeInBytes;
 
@@ -51,6 +52,7 @@ public class UcxPageMessage
         super(data);
         this.blockNumber = data.getInt();
         this.pageCodecMarkers = data.get();
+        this.offHeap = data.get() == 1 ? true : false;
         this.positionCount = data.getInt();
         this.uncompressedSizeInBytes = data.getInt();
         this.data = data;
@@ -60,6 +62,7 @@ public class UcxPageMessage
     {
         return new BlockMetadata(blockAddress(blockId),
                 blockSize(blockId),
+                blockPositionCount(blockId),
                 blockRkey(blockId),
                 blockHashCode(blockId));
     }
@@ -74,14 +77,19 @@ public class UcxPageMessage
         return data.getLong(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + LONG_SIZE);
     }
 
-    private int blockHashCode(int blockId)
+    private int blockPositionCount(int blockId)
     {
         return data.getInt(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE);
     }
 
+    private int blockHashCode(int blockId)
+    {
+        return data.getInt(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE + INT_SIZE);
+    }
+
     private ByteBuffer blockRkey(int blockId)
     {
-        int rkeySizeOffset = MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE + INT_SIZE;
+        int rkeySizeOffset = MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE + 2 * INT_SIZE;
         int dataRkeySize = data.getInt(rkeySizeOffset);
         ByteBuffer result = data.duplicate(); // We can't capacity ByteBuffer, so duplicate a new ByteBuffer and return.
         int rkeyOffset = rkeySizeOffset + INT_SIZE;
@@ -99,6 +107,11 @@ public class UcxPageMessage
         return pageCodecMarkers;
     }
 
+    public boolean isOffHeap()
+    {
+        return offHeap;
+    }
+
     public int getPositionCount()
     {
         return positionCount;
@@ -112,30 +125,23 @@ public class UcxPageMessage
     @Override
     public String toString()
     {
-        return "{ blockNumber:" +
-                blockNumber +
-                ",block[0]:" +
-                (blockNumber == 0 ? "null" : getBlockMetadata(0)) +
-                ",pageCodecMarkers:"
-                + pageCodecMarkers
-                + ",positionCount:" +
-                +positionCount
-                + ",uncompressedSizeInBytes:"
-                + uncompressedSizeInBytes
-                + " }";
+        return "{ blockNumber:" + blockNumber + ",block[0]:" + (blockNumber == 0 ? "null" : getBlockMetadata(0)) +
+                ",pageCodecMarkers:" + pageCodecMarkers + ",offHeap:" + offHeap + ",positionCount:" + positionCount + ",uncompressedSizeInBytes:" + uncompressedSizeInBytes + " }";
     }
 
     public static class BlockMetadata
     {
         private final long dataAddress;
         private final long dataSize;
+        private final int positionCount;
         private final ByteBuffer dataRkey;
         private final int hashCode;
 
-        public BlockMetadata(long dataAddress, long dataSize, ByteBuffer dataRkey, int hashCode)
+        public BlockMetadata(long dataAddress, long dataSize, int positionCount, ByteBuffer dataRkey, int hashCode)
         {
             this.dataAddress = dataAddress;
             this.dataSize = dataSize;
+            this.positionCount = positionCount;
             this.dataRkey = dataRkey;
             this.hashCode = hashCode;
         }
@@ -166,6 +172,11 @@ public class UcxPageMessage
                     hashCode +
                     " }";
         }
+
+        public int getPositionCount()
+        {
+            return positionCount;
+        }
     }
 
     public static class Builder
@@ -173,6 +184,7 @@ public class UcxPageMessage
     {
         private final ArrayList<BlockMetadata> blockMetadataVector = new ArrayList<>();
         private byte pageCodecMarkers;
+        private byte offHeap;
         private int positionCount;
         private int uncompressedSizeInBytes;
 
@@ -195,6 +207,12 @@ public class UcxPageMessage
             return this;
         }
 
+        public Builder setOffHeap(boolean offHeap)
+        {
+            this.offHeap = offHeap ? (byte) 1 : (byte) 0;
+            return this;
+        }
+
         public Builder setPositionCount(int positionCount)
         {
             this.positionCount = positionCount;
@@ -211,8 +229,9 @@ public class UcxPageMessage
         {
             RegisteredMemory memory = build(PAGE_METADATA_HEADER_SIZE + blockMetadataVector.size() * BLOCK_METADATA_SIZE);
             ByteBuffer buffer = memory.getBuffer();
-            buffer.putInt(blockMetadataVector.size());
+            buffer.putInt(this.blockMetadataVector.size());
             buffer.put(this.pageCodecMarkers);
+            buffer.put(this.offHeap);
             buffer.putInt(this.positionCount);
             buffer.putInt(this.uncompressedSizeInBytes);
             blockMetadataVector.forEach(blockMetadata -> {
@@ -221,6 +240,7 @@ public class UcxPageMessage
 
                 buffer.putLong(blockMetadata.dataAddress);
                 buffer.putLong(blockMetadata.dataSize);
+                buffer.putInt(blockMetadata.positionCount);
                 buffer.putInt(blockMetadata.hashCode);
                 buffer.putInt(blockMetadata.dataRkey.capacity());
                 buffer.put(blockMetadata.dataRkey);
@@ -238,6 +258,8 @@ public class UcxPageMessage
                     (blockMetadataVector.size() == 0 ? "null" : blockMetadataVector.get(0)) +
                     ",pageCodecMarkers:"
                     + pageCodecMarkers
+                    + ",offHeap:"
+                    + offHeap
                     + ",positionCount:" +
                     +positionCount
                     + ",uncompressedSizeInBytes:"

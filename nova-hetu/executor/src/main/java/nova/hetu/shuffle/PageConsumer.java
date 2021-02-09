@@ -18,6 +18,8 @@ import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 import nova.hetu.shuffle.inmemory.LocalShuffleClient;
+import nova.hetu.shuffle.rsocket.RsShuffleClient;
+import nova.hetu.shuffle.stream.PageSerializeUtil;
 import nova.hetu.shuffle.ucx.UcxShuffleClient;
 
 import java.io.Closeable;
@@ -43,14 +45,14 @@ public class PageConsumer
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
-        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
+        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.UCX);
     }
 
-    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, boolean forceCommunication)
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode defaultCommMode, boolean forceCommunication)
     {
         // If we are forcing the communication, does not matter whether we are on the same server or not
         if (forceCommunication) {
-            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
+            return new PageConsumer(producerInfo, serde, defaultCommMode);
         }
 
         // Compare my ip and location ip and if match, initiate in-memory page shuffling
@@ -72,7 +74,7 @@ public class PageConsumer
 //            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
         }
 
-        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.STANDARD);
+        return new PageConsumer(producerInfo, serde, defaultCommMode);
     }
 
     PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode)
@@ -84,8 +86,11 @@ public class PageConsumer
             case INMEMORY:
                 shuffleClient = new LocalShuffleClient();
                 break;
-            case STANDARD:
+            case RSOCKET:
                 // TODO: pass in an event listener to handler success and failure events
+                shuffleClient = new RsShuffleClient();
+                break;
+            case UCX:
                 shuffleClient = new UcxShuffleClient();
                 break;
             default:
@@ -104,7 +109,7 @@ public class PageConsumer
         if (page == null) {
             return null;
         }
-        return serde.deserialize(page);
+        return PageSerializeUtil.deserialize(serde, page);
     }
 
     public boolean isEnded()

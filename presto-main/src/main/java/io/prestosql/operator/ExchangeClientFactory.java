@@ -19,6 +19,7 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.memory.context.LocalMemoryContext;
+import nova.hetu.ShuffleServiceConfig;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
 
@@ -47,20 +48,23 @@ public class ExchangeClientFactory
     private final ScheduledExecutorService scheduler;
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
+    private final ShuffleServiceConfig.TransportType transportType;
 
     @Inject
     public ExchangeClientFactory(
-            ExchangeClientConfig config,
+            ExchangeClientConfig exchangeClientConfig,
+            ShuffleServiceConfig shuffleServiceConfig,
             @ForExchange HttpClient httpClient,
             @ForExchange ScheduledExecutorService scheduler)
     {
         this(
-                config.getMaxBufferSize(),
-                config.getMaxResponseSize(),
-                config.getConcurrentRequestMultiplier(),
-                config.getMaxErrorDuration(),
-                config.isAcknowledgePages(),
-                config.getPageBufferClientMaxCallbackThreads(),
+                exchangeClientConfig.getMaxBufferSize(),
+                exchangeClientConfig.getMaxResponseSize(),
+                exchangeClientConfig.getConcurrentRequestMultiplier(),
+                exchangeClientConfig.getMaxErrorDuration(),
+                exchangeClientConfig.isAcknowledgePages(),
+                exchangeClientConfig.getPageBufferClientMaxCallbackThreads(),
+                shuffleServiceConfig.getTransportType(),
                 httpClient,
                 scheduler);
     }
@@ -72,6 +76,7 @@ public class ExchangeClientFactory
             Duration maxErrorDuration,
             boolean acknowledgePages,
             int pageBufferClientMaxCallbackThreads,
+            ShuffleServiceConfig.TransportType transportType,
             HttpClient httpClient,
             ScheduledExecutorService scheduler)
     {
@@ -80,6 +85,7 @@ public class ExchangeClientFactory
         this.maxErrorDuration = requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         this.acknowledgePages = acknowledgePages;
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
+        this.transportType = transportType;
 
         // Use only 0.75 of the maxResponseSize to leave room for additional bytes from the encoding
         // TODO figure out a better way to compute the size of data that will be transferred over the network
@@ -114,7 +120,7 @@ public class ExchangeClientFactory
     public ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
     {
         if (true /** grpc.enabled */) {
-            return new StreamingExchangeClient(pagesSerde);
+            return new StreamingExchangeClient(pagesSerde, transportType);
         }
         return new HttpExchangeClient(
                 maxBufferedBytes,

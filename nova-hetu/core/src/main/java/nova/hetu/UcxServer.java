@@ -43,7 +43,7 @@ public class UcxServer
     private static final Logger log = Logger.getLogger(UcxServer.class);
 
     private final ExecutorService listenerExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService serverExecutor = Executors.newWorkStealingPool();
+    private final ExecutorService serverExecutor = Executors.newCachedThreadPool();
     private final Stack<Closeable> resources = new Stack<>();
     private UcpContext context;
     private UcpWorker worker;

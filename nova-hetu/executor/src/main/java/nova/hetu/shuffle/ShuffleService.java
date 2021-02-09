@@ -57,7 +57,7 @@ public class ShuffleService
         final String producerId = producer.getProducerId();
         log.info("====================== Get result for " + producerId);
         ServerCallStreamObserver<ShuffleOuterClass.Page> serverCallStreamObserver = (ServerCallStreamObserver<ShuffleOuterClass.Page>) responseObserver;
-        Stream stream = StreamManager.get(producer.getProducerId(), PagesSerde.CommunicationMode.STANDARD);
+        Stream stream = StreamManager.get(producer.getProducerId(), PagesSerde.CommunicationMode.RSOCKET);
 
         /**
          * Wait until stream is created, another way is to simply return and let the client try again
@@ -65,7 +65,7 @@ public class ShuffleService
         long maxWait = 1000;
         long sleepInterval = 50;
         while (stream == null && !serverCallStreamObserver.isCancelled() && maxWait > 0) {
-            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.STANDARD);
+            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.RSOCKET);
             try {
                 maxWait -= sleepInterval;
                 Thread.sleep(sleepInterval);

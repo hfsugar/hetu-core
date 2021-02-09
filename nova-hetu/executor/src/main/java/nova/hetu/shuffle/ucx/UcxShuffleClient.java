@@ -33,7 +33,7 @@ public class UcxShuffleClient
 {
     private static final Logger log = Logger.getLogger(UcxShuffleClient.class);
     private static final UcxConnectionFactory factory = new UcxConnectionFactory();
-    private static final ExecutorService executor = Executors.newWorkStealingPool();
+    private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final AtomicInteger idCounter = new AtomicInteger(0);
 
     public UcxShuffleClient() {}

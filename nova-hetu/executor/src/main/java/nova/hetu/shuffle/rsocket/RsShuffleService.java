@@ -46,7 +46,7 @@ public class RsShuffleService
                 String producerId = payload.getDataUtf8();
 
                 log.info("requesting stream: " + producerId);
-                Stream stream = StreamManager.getStream(producerId, PagesSerde.CommunicationMode.STANDARD, StreamManager.DEFAULT_MAX_WAIT, StreamManager.DEFAULT_SLEEP_INTERVAL);
+                Stream stream = StreamManager.getStream(producerId, PagesSerde.CommunicationMode.RSOCKET, StreamManager.DEFAULT_MAX_WAIT, StreamManager.DEFAULT_SLEEP_INTERVAL);
                 if (stream == null) {
                     throw new RuntimeException("Error getting stream after retry: " + producerId);
                 }

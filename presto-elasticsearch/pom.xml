@@ -221,6 +221,14 @@
                     <groupId>io.netty</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>io.hetu.core</groupId>
+                    <artifactId>executor</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.hetu.core</groupId>
+                    <artifactId>core</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
@@ -228,6 +236,12 @@
             <groupId>io.hetu.core</groupId>
             <artifactId>presto-tests</artifactId>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.hetu.core</groupId>
+                    <artifactId>presto-main</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>

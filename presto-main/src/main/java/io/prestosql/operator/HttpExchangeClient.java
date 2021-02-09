@@ -165,24 +165,20 @@ public class HttpExchangeClient
         }
 
         checkState(!noMoreLocations, "No more locations already set");
-        if (false /** grpc.enabled */) {
-            //create grpc client
-        }
-        else {
-            HttpPageBufferClient client = new HttpPageBufferClient(
-                    httpClient,
-                    maxResponseSize,
-                    maxErrorDuration,
-                    acknowledgePages,
-                    location,
-                    new ExchangeClientCallback(),
-                    scheduler,
-                    pageBufferClientCallbackExecutor);
-            allClients.put(location, client);
-            queuedClients.add(client);
 
-            scheduleRequestIfNecessary();
-        }
+        HttpPageBufferClient client = new HttpPageBufferClient(
+                httpClient,
+                maxResponseSize,
+                maxErrorDuration,
+                acknowledgePages,
+                location,
+                new ExchangeClientCallback(),
+                scheduler,
+                pageBufferClientCallbackExecutor);
+        allClients.put(location, client);
+        queuedClients.add(client);
+
+        scheduleRequestIfNecessary();
     }
 
     @Override

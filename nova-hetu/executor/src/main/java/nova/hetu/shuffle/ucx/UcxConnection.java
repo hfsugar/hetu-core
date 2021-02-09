@@ -16,6 +16,8 @@ package nova.hetu.shuffle.ucx;
 
 import com.google.common.util.concurrent.SettableFuture;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
+import io.prestosql.spi.block.Block;
+import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.shuffle.ucx.memory.RegisteredMemory;
 import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
 import nova.hetu.shuffle.ucx.message.UcxCloseMessage;
@@ -38,9 +40,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
+import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static io.hetu.core.transport.execution.buffer.PageCodecMarker.MarkerSet.fromByteValue;
+import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static nova.hetu.shuffle.ucx.message.UcxMessage.MAX_MESSAGE_SIZE;
 
 public class UcxConnection
@@ -162,6 +168,107 @@ public class UcxConnection
         return this.factory.getMemoryPool();
     }
 
+    private void putBlock(Page page, int blockId, ByteBuffer blockBuffer, int positionCount, SettableFuture future)
+            throws IOException
+    {
+        if (blockId >= page.blocks.length) {
+            throw new IOException("block id is out-of-bounds array.");
+        }
+        // TODO: create new vector block by type.
+        LongVec longVec = new LongVec(blockBuffer, blockBuffer.capacity());
+        //page.blocks[blockId] = new LongArrayBlock(positionCount, Optional.empty(), longVec);
+        if (page.left.decrementAndGet() == 0) {
+            SerializedPage serializedPage = new SerializedPage(page.blocks, fromByteValue(page.marker), page.positionCount, page.uncompressedSizeInBytes, page.properties);
+            future.set(serializedPage);
+        }
+    }
+
+    private void readBlocks(long tag, UcxPageMessage pageMetadata, SettableFuture future)
+    {
+        int blockNumber = pageMetadata.getBlockNumber();
+        Page page = new Page(blockNumber, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes(), null);
+
+        for (int blockId = 0; blockId < blockNumber; blockId++) {
+            UcxPageMessage.BlockMetadata blockMetadata = pageMetadata.getBlockMetadata(blockId);
+
+            long remoteAddress = blockMetadata.getDataAddress();
+            long remoteSize = blockMetadata.getDataSize();
+            UcpRemoteKey remoteKey = endpoint.unpackRemoteKey(blockMetadata.getDataRkey());
+
+            ByteBuffer blockBuffer = ByteBuffer.allocateDirect((int) remoteSize).order(LITTLE_ENDIAN);
+            UcpMemory blockMemory = context.registerMemory(blockBuffer);
+            final int finalBlockId = blockId;
+            endpoint.getNonBlocking(remoteAddress, remoteKey, blockBuffer, new UcxCallback()
+            {
+                @Override
+                public void onSuccess(UcpRequest request)
+                {
+                    try {
+                        putBlock(page, finalBlockId, blockBuffer, blockMetadata.getPositionCount(), future);
+                    }
+                    catch (IOException e) {
+                        future.setException(null);
+                        log.error("put block to page failed." + e.getMessage());
+                    }
+                    log.trace("Client read block: [" + tag + "] [" + finalBlockId + "]" + pageMetadata.toString() + " hashCode:" + blockBuffer.hashCode());
+                    // TODO: check hash code.
+                    blockMemory.close();
+                    // free remote data buffer.
+                    remoteKey.close();
+                    super.onSuccess(request);
+                }
+
+                @Override
+                public void onError(int ucsStatus, String errorMsg)
+                {
+                    future.setException(null);
+                    blockMemory.close();
+                    // free remote data buffer.
+                    remoteKey.close();
+                    super.onError(ucsStatus, errorMsg);
+                }
+            });
+        }
+    }
+
+    private void readPage(long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
+    {
+        UcxPageMessage.BlockMetadata blockMetadata = pageMetadata.getBlockMetadata(0);
+
+        long remoteAddress = blockMetadata.getDataAddress();
+        long remoteSize = blockMetadata.getDataSize();
+        UcpRemoteKey remoteKey = endpoint.unpackRemoteKey(blockMetadata.getDataRkey());
+
+        ByteBuffer pageBuffer = ByteBuffer.allocateDirect((int) remoteSize);
+        UcpMemory pageMemory = context.registerMemory(pageBuffer);
+        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer, new UcxCallback()
+        {
+            @Override
+            public void onSuccess(UcpRequest request)
+            {
+                byte[] bytes = new byte[pageBuffer.capacity()];
+                pageBuffer.get(bytes);
+                log.trace("Client read page: [" + tag + "] " + pageMetadata.toString() + " hashCode:" + pageBuffer.hashCode());
+                SerializedPage page = new SerializedPage(bytes, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes());
+                future.set(page);
+                pageMemory.close();
+                // free remote data buffer.
+                remoteKey.close();
+                super.onSuccess(request);
+            }
+
+            @Override
+            public void onError(int ucsStatus, String errorMsg)
+            {
+                future.setException(null);
+                pageMemory.close();
+                // free remote data buffer.
+                remoteKey.close();
+                super.onError(ucsStatus, errorMsg);
+            }
+        });
+    }
+
     private SettableFuture<SerializedPage> queuePageRequest(int id, int i)
     {
         SettableFuture<SerializedPage> future = SettableFuture.create();
@@ -173,58 +280,23 @@ public class UcxConnection
             @Override
             public void onSuccess(UcpRequest request)
             {
-                UcxPageMessage message = new UcxPageMessage(pageBuffer.getBuffer());
-                int uncompressedSizeInBytes = message.getUncompressedSizeInBytes();
+                UcxPageMessage pageMetadata = new UcxPageMessage(pageBuffer.getBuffer());
+                int uncompressedSizeInBytes = pageMetadata.getUncompressedSizeInBytes();
                 if (uncompressedSizeInBytes == 0) {
                     //EoS
-                    log.trace("Client receive EOS: [" + tag + "] " + message.toString());
+                    log.trace("Client receive EOS: [" + tag + "] " + pageMetadata.toString());
                     future.set(null);
-                    getMemoryPool().put(pageBuffer);
-                    super.onSuccess(request);
-                    return;
+                }
+                else {
+                    if (pageMetadata.isOffHeap()) {
+                        readBlocks(tag, pageMetadata, future);
+                    }
+                    else {
+                        readPage(tag, pageMetadata, future);
+                    }
                 }
 
-                // TODO: block
-                UcxPageMessage.BlockMetadata blockMetadata = message.getBlockMetadata(0);
-
-                long remoteAddress = blockMetadata.getDataAddress();
-                long remoteSize = blockMetadata.getDataSize();
-                UcpRemoteKey remoteKey = endpoint.unpackRemoteKey(blockMetadata.getDataRkey());
-
-                // Limited to 2GB direct buffer grrrrr...
-                // TODO check if using a buffer pool  or if we could allocate a fix size
-                ByteBuffer serialisedPage = ByteBuffer.allocateDirect((int) remoteSize);
-                UcpMemory serializedPageMemory = context.registerMemory(serialisedPage);
-                endpoint.getNonBlocking(remoteAddress, remoteKey, serialisedPage, new UcxCallback()
-                {
-                    @Override
-                    public void onSuccess(UcpRequest request)
-                    {
-                        // TODO: can not copy buffer from off-heap here, if SerializedPage is a OmniVector array
-                        byte[] bytes = new byte[serialisedPage.capacity()];
-                        serialisedPage.get(bytes);
-                        log.trace("Client read page: [" + tag + "] " + message.toString() + " hashCode: " + serialisedPage.clear().hashCode());
-                        // TODO: check hash code.
-                        SerializedPage page = new SerializedPage(bytes, message.getPageCodecMarkers(), message.getPositionCount(), uncompressedSizeInBytes);
-                        future.set(page);
-                        serializedPageMemory.close();
-                        // free remote data buffer.
-                        remoteKey.close();
-                        getMemoryPool().put(pageBuffer);
-                        super.onSuccess(request);
-                    }
-
-                    @Override
-                    public void onError(int ucsStatus, String errorMsg)
-                    {
-                        future.setException(null);
-                        serializedPageMemory.close();
-                        // free remote data buffer.
-                        remoteKey.close();
-                        getMemoryPool().put(pageBuffer);
-                        super.onError(ucsStatus, errorMsg);
-                    }
-                });
+                getMemoryPool().put(pageBuffer);
                 super.onSuccess(request);
             }
 
@@ -288,5 +360,25 @@ public class UcxConnection
                 super.onError(ucsStatus, errorMsg);
             }
         });
+    }
+
+    private class Page
+    {
+        private final Block[] blocks;
+        private final int positionCount;
+        private final byte marker;
+        private final int uncompressedSizeInBytes;
+        private final Properties properties;
+        private final AtomicInteger left = new AtomicInteger(0);
+
+        public Page(int blockNumber, byte marker, int positionCount, int uncompressedSizeInBytes, Properties properties)
+        {
+            this.blocks = new Block[blockNumber];
+            this.marker = marker;
+            this.positionCount = positionCount;
+            this.uncompressedSizeInBytes = uncompressedSizeInBytes;
+            this.properties = properties;
+            this.left.set(blockNumber);
+        }
     }
 }

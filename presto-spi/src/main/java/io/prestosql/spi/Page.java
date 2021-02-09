@@ -119,6 +119,22 @@ public class Page
         return blocks[channel];
     }
 
+    public Block[] getBlocks()
+    {
+        return blocks;
+    }
+
+    public boolean isOffHeap()
+    {
+        // need all blocks are off heap.
+        for (Block block : blocks) {
+            if (!block.isOffHeap()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Gets the values at the specified position as a single element page.  The method creates independent
      * copy of the data.
