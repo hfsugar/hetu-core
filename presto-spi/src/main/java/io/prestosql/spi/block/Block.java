@@ -26,7 +26,7 @@ import static io.prestosql.spi.block.DictionaryId.randomDictionaryId;
 
 public interface Block<T>
 {
-    default Vec<?> getValues()
+    default Vec getValues()
     {
         throw new UnsupportedOperationException();
     }

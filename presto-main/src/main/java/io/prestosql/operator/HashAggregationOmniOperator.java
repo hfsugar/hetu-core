@@ -22,6 +22,7 @@ import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.Vec;
 
 import java.util.List;
+import java.util.UUID;
 
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -45,7 +46,7 @@ public class HashAggregationOmniOperator
     public HashAggregationOmniOperator(OperatorContext operatorContext, OmniRuntime omniRuntime, List<String> compileID)
     {
         this.operatorContext = operatorContext;
-        this.omniKey = Thread.currentThread().getName().substring(0,Thread.currentThread().getName().lastIndexOf("-"));
+        this.omniKey= UUID.randomUUID().toString()+"-"+operatorContext.getDriverContext().getPipelineContext().getTaskId();
         this.omniRuntime = omniRuntime;
         this.compileID = compileID;
     }

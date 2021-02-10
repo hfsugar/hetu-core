@@ -41,7 +41,7 @@ public final class HashAggregationOmniWork<O>
     OmniRuntime omniRuntime;
     List<String> compileID;
     private boolean finished;
-    private Vec<?>[] result;
+    private Vec[] result;
     private Page page;
     String omniKey;
     VecType[] outTypes;
@@ -84,12 +84,12 @@ public final class HashAggregationOmniWork<O>
     {
         checkState(finished, "process has not finished");
 
-        result = (Vec<?>[]) omniRuntime.execute(compileID.get(0), omniKey, null, 0, outTypes, OmniOpStep.FINAL);
+        result = (Vec[]) omniRuntime.execute(compileID.get(0), omniKey, null, 0, outTypes, OmniOpStep.FINAL);
 
         return toResult(result);
     }
 
-    public Page toResult(Vec<?>[] omniExecutionResult)
+    public Page toResult(Vec[] omniExecutionResult)
     {
         int positionCount = omniExecutionResult[0].size();
         int chanelCount = omniExecutionResult.length;
