@@ -16,7 +16,6 @@ package io.prestosql.spi;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.DictionaryBlock;
 import io.prestosql.spi.block.DictionaryId;
-import nova.hetu.omnicache.OMVectorBase;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
@@ -146,7 +145,7 @@ public class Page
             for (Block block : blocks) {
                 // TODO: check with trans type?
                 if (block.isOffHeap()) {
-                    OMVectorBase.free(block.getVec().getData());
+                    block.getVec().close();
                 }
             }
         }

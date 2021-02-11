@@ -260,7 +260,6 @@ public class LongArrayBlock
             }
             newValues[i] = values.get(position + arrayOffset);
         }
-        this.values.release();
         return new LongArrayBlock(0, length, newValueIsNull, newValues);
     }
 
