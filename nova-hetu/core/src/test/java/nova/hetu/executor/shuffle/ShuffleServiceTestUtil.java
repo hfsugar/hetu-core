@@ -34,7 +34,7 @@ import static org.testng.Assert.assertEquals;
 public class ShuffleServiceTestUtil
 {
     public static final int TEST_SHUFFLE_SERVICE_PORT = 16544;
-    public static final String TEST_SHUFFLE_SERVICE_HOST = "127.0.0.1";
+    public static final String TEST_SHUFFLE_SERVICE_HOST = "127.0.1.1";
 
     private ShuffleServiceTestUtil() {}
 

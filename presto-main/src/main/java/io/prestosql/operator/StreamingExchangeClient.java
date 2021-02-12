@@ -16,13 +16,16 @@ package io.prestosql.operator;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
+import io.prestosql.memory.context.LocalMemoryContext;
 import io.prestosql.spi.Page;
 import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageConsumer;
 import nova.hetu.shuffle.ProducerInfo;
 
 import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
 import java.net.URI;
@@ -40,7 +43,13 @@ import static java.util.Objects.requireNonNull;
 public class StreamingExchangeClient
         implements ExchangeClient
 {
-    private final PagesSerde pagesSerde;
+    private final long bufferCapacity;
+    private final int concurrentRequestMultiplier;
+
+    @GuardedBy("this")
+    private long bufferRetainedSizeInBytes;
+    @GuardedBy("this")
+    private long maxBufferRetainedSizeInBytes;
 
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ConcurrentHashMap<URI, PageConsumer> pageConsumers = new ConcurrentHashMap<>();
@@ -48,9 +57,22 @@ public class StreamingExchangeClient
     private final PagesSerde.CommunicationMode defaultTransType;
     private boolean noMoreLocation;
 
-    public StreamingExchangeClient(PagesSerde pagesSerde, ShuffleServiceConfig.TransportType transportType)
+    private final LocalMemoryContext systemMemoryContext;
+    private final PagesSerde pagesSerde;
+    int nPolledPages;
+
+    public StreamingExchangeClient(DataSize bufferCapacity,
+            int concurrentRequestMultiplier,
+            LocalMemoryContext systemMemoryContext,
+            PagesSerde pagesSerde,
+            ShuffleServiceConfig.TransportType transportType)
     {
+        this.concurrentRequestMultiplier = concurrentRequestMultiplier;
+        this.bufferCapacity = bufferCapacity.toBytes();
+        this.systemMemoryContext = systemMemoryContext;
         this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
+        this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
+        this.nPolledPages = 0;
         this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
     }
 
@@ -92,6 +114,18 @@ public class StreamingExchangeClient
             numConsumers--;
         }
 
+        nPolledPages = (nPolledPages + 1) % 100;
+        if (nPolledPages == 0) {
+//            increaseOrDecreaseRateLimit();
+        }
+
+        synchronized (this) {
+            if (!closed.get()) {
+                bufferRetainedSizeInBytes -= page.getRetainedSizeInBytes();
+                systemMemoryContext.setBytes(bufferRetainedSizeInBytes);
+            }
+        }
+
         return page;
     }
 
@@ -123,6 +157,8 @@ public class StreamingExchangeClient
         for (PageConsumer client : pageConsumers.values()) {
             closeQuietly(client);
         }
+        systemMemoryContext.setBytes(0);
+        bufferRetainedSizeInBytes = 0;
     }
 
     private static void closeQuietly(PageConsumer client)
@@ -133,5 +169,61 @@ public class StreamingExchangeClient
         catch (RuntimeException | IOException e) {
             // ignored
         }
+    }
+
+    public synchronized void increaseOrDecreaseRateLimit()
+    {
+        if (isFinished()) {
+            return;
+        }
+
+        bufferRetainedSizeInBytes = 0;
+        int numConsumers = 0;
+        int rateLimit = 0;
+        long numPages = 0;
+        //long responseSize = 0;
+        for (PageConsumer pageConsumer : activePageConsumers) {
+            if (!pageConsumer.isEnded()) {
+                numPages += pageConsumer.getPageOutputBufferSize();
+                bufferRetainedSizeInBytes += pageConsumer.getTotalPagesRetainedSizeInBytes();
+                //responseSize += pageConsumer.getTotalSizeInBytes();
+                rateLimit += pageConsumer.getRateLimit();
+                numConsumers++;
+            }
+        }
+        maxBufferRetainedSizeInBytes = Math.max(maxBufferRetainedSizeInBytes, bufferRetainedSizeInBytes);
+        systemMemoryContext.setBytes(bufferRetainedSizeInBytes);
+
+        //successfulRequests++;
+        //averageBytesPerRequest = (long) (1.0 * averageBytesPerRequest * (successfulRequests - 1) / successfulRequests + responseSize / successfulRequests);
+
+        numPages = numPages / numConsumers;
+        rateLimit = rateLimit / numConsumers;
+
+        long neededBytes = bufferCapacity - bufferRetainedSizeInBytes;
+        // Decrease rate limit
+        if (neededBytes <= 0) {
+            for (PageConsumer pageConsumer : activePageConsumers) {
+                if (!pageConsumer.isEnded()) {
+                    pageConsumer.changeRateLimit(-rateLimit / 2);
+                    System.out.println("Decreasing rate limit from " + rateLimit + " to " + rateLimit / 2);
+                }
+            }
+            return;
+        }
+
+        // Potentially increase rate limit
+        long averageRetainedSizeInBytes = bufferRetainedSizeInBytes / numPages;
+        int incRateLimit = (int) (neededBytes / averageRetainedSizeInBytes / rateLimit / numConsumers);
+
+        for (PageConsumer pageConsumer : activePageConsumers) {
+            if (!pageConsumer.isEnded()) {
+                pageConsumer.changeRateLimit(incRateLimit);
+                System.out.println("Increasing rate limit from " + rateLimit + " to " + incRateLimit);
+            }
+        }
+
+        //int clientCount = (int) ((1.0 * neededBytes / averageBytesPerRequest) * concurrentRequestMultiplier);
+        //clientCount = Math.max(clientCount, 1);
     }
 }

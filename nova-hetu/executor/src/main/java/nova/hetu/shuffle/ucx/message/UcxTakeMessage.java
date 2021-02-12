@@ -29,6 +29,7 @@ public class UcxTakeMessage
     // | id(4B) | rateLimit(4B) | producerIdSize(4B) | producerId(producerIdSize Bytes) |
     private final int id;
     private final int rateLimit;
+    private final int numProcessed;
     private final String producerId;
 
     public UcxTakeMessage(ByteBuffer data)
@@ -36,6 +37,7 @@ public class UcxTakeMessage
         super(data);
         this.id = data.getInt();
         this.rateLimit = data.getInt();
+        this.numProcessed = data.getInt();
         int producerIdSize = data.getInt();
         data.limit(data.position() + producerIdSize);
         this.producerId = CHARSET.decode(data).toString();
@@ -51,6 +53,11 @@ public class UcxTakeMessage
         return rateLimit;
     }
 
+    public int getNumProcessed()
+    {
+        return numProcessed;
+    }
+
     public String getProducerId()
     {
         return producerId;
@@ -61,6 +68,7 @@ public class UcxTakeMessage
     {
         private int rateLimit;
         private int id;
+        private int numProcessed;
         private String producerId;
 
         public Builder(UcxMemoryPool ucxMemoryPool)
@@ -80,6 +88,12 @@ public class UcxTakeMessage
             return this;
         }
 
+        public Builder setNumProcessed(int numProcessed)
+        {
+            this.numProcessed = numProcessed;
+            return this;
+        }
+
         public Builder setProducerId(String producerId)
         {
             this.producerId = producerId;
@@ -89,10 +103,11 @@ public class UcxTakeMessage
         public RegisteredMemory build()
         {
             int producerIdSize = producerId.getBytes(CHARSET).length;
-            RegisteredMemory memory = build(INT_SIZE * 3 + producerIdSize);
+            RegisteredMemory memory = build(INT_SIZE * 4 + producerIdSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(id);
             buffer.putInt(rateLimit);
+            buffer.putInt(numProcessed);
             buffer.putInt(producerIdSize);
             buffer.put(producerId.getBytes(CHARSET));
             buffer.clear();

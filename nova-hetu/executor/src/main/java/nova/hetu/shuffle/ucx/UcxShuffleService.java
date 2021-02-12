@@ -40,10 +40,10 @@ import org.openucx.jucx.ucp.UcpWorkerParams;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -116,7 +116,7 @@ public class UcxShuffleService
                 UcxTakeMessage take = new UcxTakeMessage(buffer);
                 UcxStream stream = getOrCreate(take.getProducerId(), take.getId());
                 log.info("Server handle " + take);
-                stream.enqueue(take.getRateLimit());
+                stream.enqueue(take.getRateLimit(), take.getNumProcessed());
                 break;
             case CLOSE:
                 // close stream
@@ -188,7 +188,8 @@ public class UcxShuffleService
         private final String producerId;
         private final int id;
         private final AtomicInteger queued = new AtomicInteger(0);
-        private final Stack<Closeable> resources = new Stack<>();
+        private final LinkedBlockingQueue<Closeable> resources = new LinkedBlockingQueue<>();
+        private final AtomicBoolean streamClosed = new AtomicBoolean(false);
         private Stream stream;
         private int sendId;
 
@@ -200,7 +201,7 @@ public class UcxShuffleService
             this.sendId = 0;
         }
 
-        public void enqueue(int nbRequests)
+        public void enqueue(int nbRequests, int numProcessed)
         {
             if (stream != null && stream.isClosed()) {
                 return;
@@ -210,30 +211,30 @@ public class UcxShuffleService
             if (beforeAdd == 0) {
                 serverExecutor.submit(this::process);
             }
+            resetResource(numProcessed);
         }
 
         private void getStream()
         {
-            if (stream == null) {
-                long maxWait = 10000;
-                long sleepInterval = 50;
-                while (stream == null && maxWait > 0) {
-                    stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
-                    try {
-                        maxWait -= sleepInterval;
-                        Thread.sleep(sleepInterval);
-                    }
-                    catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    if (stream != null) {
-                        log.info("Got output stream after retry " + producerId);
-                    }
+            if (stream != null) {
+                return;
+            }
+            long sleepInterval = 50;
+            stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
+            while (stream == null && !streamClosed.get()) {
+                if (sleepInterval < 250) {
+                    sleepInterval = sleepInterval + 5;
                 }
+                try {
+                    Thread.sleep(sleepInterval);
+                }
+                catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
             }
             if (stream == null) {
                 log.error("Couldn't get the stream: " + producerId);
-                //FIXME we need to clean up the stream entry
             }
         }
 
@@ -278,7 +279,7 @@ public class UcxShuffleService
             UcpMemory pageMemory = context.registerMemory(pageBuffer);
             pageBuffer.put(slice);
             pageBuffer.clear();
-            resources.push(pageMemory);
+            resources.add(pageMemory);
 
             UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
                     pageMemory.getAddress(),
@@ -313,7 +314,7 @@ public class UcxShuffleService
                 ByteBuffer blockBuffer = vec.getData();
                 // will free by client when client UcpRemoteKey.close()
                 UcpMemory blockMemory = context.registerMemory(blockBuffer);
-                resources.push(blockMemory);
+                resources.add(blockMemory);
 
                 UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
                         blockMemory.getAddress(),
@@ -359,27 +360,37 @@ public class UcxShuffleService
             });
         }
 
+        public void resetResource(int numProcessed)
+        {
+            for (int i = 0; i < numProcessed; ++i) {
+                try {
+                    resources.take().close();
+                }
+                catch (IOException | InterruptedException e) {
+                    log.error("release resource failed. " + e);
+                }
+            }
+        }
+
         public void resetResource()
         {
-            while (!resources.empty()) {
+            while (!resources.isEmpty()) {
                 try {
-                    resources.pop().close();
+                    resources.remove().close();
                 }
                 catch (IOException e) {
-                    log.warn("release resource failed. " + e);
+                    log.error("release resource failed. " + e);
                 }
             }
         }
 
         public void process()
         {
-            resetResource();
-
             getStream();
 
             boolean isEOS = false;
-            //FIXME if stream is null, send exeption back ...
-            if (stream == null || (stream != null && stream.isClosed())) {
+            if (stream == null || stream.isClosed()) {
+                log.info("Setting EoS to clean up pending message");
                 isEOS = true;
             }
             while (queued.getAndUpdate(op -> op == 0 ? 0 : op - 1) > 0) {
@@ -410,6 +421,7 @@ public class UcxShuffleService
         public void close()
                 throws IOException
         {
+            streamClosed.set(true);
             resetResource();
         }
     }

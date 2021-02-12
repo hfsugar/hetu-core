@@ -39,14 +39,14 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.LinkedList;
 import java.util.Properties;
-import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.hetu.core.transport.execution.buffer.PageCodecMarker.MarkerSet.fromByteValue;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
+import static nova.hetu.shuffle.stream.Constants.EOS;
 import static nova.hetu.shuffle.ucx.message.UcxMessage.MAX_MESSAGE_SIZE;
 
 public class UcxConnection
@@ -57,10 +57,10 @@ public class UcxConnection
     private final UcxConnectionFactory factory;
     private final UcpContext context;
     private final UcpWorker worker;
-    private SettableFuture<Boolean> connected;
-    private UcpEndpoint endpoint;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean startedListening = new AtomicBoolean(false);
+    private SettableFuture<Boolean> connected;
+    private UcpEndpoint endpoint;
 
     public UcxConnection(UcpContext context, InetSocketAddress address, UcxConnectionFactory factory)
     {
@@ -152,15 +152,13 @@ public class UcxConnection
         }
     }
 
-    public Queue<SettableFuture<SerializedPage>> requestNbPages(String producerId, int id, int msgId, int rateLimit)
+    public void requestNbPages(LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue, UcxMemoryPool ucxPageMemoryPool, String producerId, int id, int msgId, int rateLimit, int numProcessed)
     {
-        Queue<SettableFuture<SerializedPage>> futurePages = new LinkedList<>();
         for (int i = 0; i < rateLimit; i++) {
-            SettableFuture<SerializedPage> pageFuture = queuePageRequest(id, msgId + i);
-            futurePages.add(pageFuture);
+            SettableFuture<SerializedPage> pageFuture = queuePageRequest(ucxPageMemoryPool, id, msgId + i);
+            futureQueue.offer(pageFuture);
         }
-        requestPages(producerId, id, rateLimit);
-        return futurePages;
+        requestPages(producerId, id, rateLimit, numProcessed);
     }
 
     private UcxMemoryPool getMemoryPool()
@@ -231,7 +229,7 @@ public class UcxConnection
         }
     }
 
-    private void readPage(long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
+    private void readPage(UcxMemoryPool ucxPageMemoryPool, long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
     {
         UcxPageMessage.BlockMetadata blockMetadata = pageMetadata.getBlockMetadata(0);
 
@@ -239,19 +237,18 @@ public class UcxConnection
         long remoteSize = blockMetadata.getDataSize();
         UcpRemoteKey remoteKey = endpoint.unpackRemoteKey(blockMetadata.getDataRkey());
 
-        ByteBuffer pageBuffer = ByteBuffer.allocateDirect((int) remoteSize);
-        UcpMemory pageMemory = context.registerMemory(pageBuffer);
-        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer, new UcxCallback()
+        RegisteredMemory pageBuffer = ucxPageMemoryPool.get((int) remoteSize);
+        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer.getBuffer(), new UcxCallback()
         {
             @Override
             public void onSuccess(UcpRequest request)
             {
-                byte[] bytes = new byte[pageBuffer.capacity()];
-                pageBuffer.get(bytes);
+                byte[] bytes = new byte[(int) remoteSize];
+                pageBuffer.getBuffer().get(bytes);
                 log.trace("Client read page: [" + tag + "] " + pageMetadata.toString() + " hashCode:" + pageBuffer.hashCode());
                 SerializedPage page = new SerializedPage(bytes, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes());
                 future.set(page);
-                pageMemory.close();
+                ucxPageMemoryPool.put(pageBuffer);
                 // free remote data buffer.
                 remoteKey.close();
                 super.onSuccess(request);
@@ -261,7 +258,7 @@ public class UcxConnection
             public void onError(int ucsStatus, String errorMsg)
             {
                 future.setException(null);
-                pageMemory.close();
+                ucxPageMemoryPool.put(pageBuffer);
                 // free remote data buffer.
                 remoteKey.close();
                 super.onError(ucsStatus, errorMsg);
@@ -269,7 +266,7 @@ public class UcxConnection
         });
     }
 
-    private SettableFuture<SerializedPage> queuePageRequest(int id, int i)
+    private SettableFuture<SerializedPage> queuePageRequest(UcxMemoryPool ucxPageMemoryPool, int id, int i)
     {
         SettableFuture<SerializedPage> future = SettableFuture.create();
         long tmp = id;
@@ -285,14 +282,14 @@ public class UcxConnection
                 if (uncompressedSizeInBytes == 0) {
                     //EoS
                     log.trace("Client receive EOS: [" + tag + "] " + pageMetadata.toString());
-                    future.set(null);
+                    future.set(EOS);
                 }
                 else {
                     if (pageMetadata.isOffHeap()) {
                         readBlocks(tag, pageMetadata, future);
                     }
                     else {
-                        readPage(tag, pageMetadata, future);
+                        readPage(ucxPageMemoryPool, tag, pageMetadata, future);
                     }
                 }
 
@@ -311,12 +308,13 @@ public class UcxConnection
         return future;
     }
 
-    private void requestPages(String producerId, int id, int rateLimit)
+    private void requestPages(String producerId, int id, int rateLimit, int numProcessed)
     {
         RegisteredMemory buffer = new UcxTakeMessage.Builder(this.getMemoryPool())
                 .setProducerId(producerId)
                 .setId(id)
                 .setRateLimit(rateLimit)
+                .setNumProcessed(numProcessed)
                 .build();
 
         endpoint.sendTaggedNonBlocking(buffer.getBuffer(), new UcxCallback()
@@ -360,6 +358,11 @@ public class UcxConnection
                 super.onError(ucsStatus, errorMsg);
             }
         });
+    }
+
+    public UcpContext getContext()
+    {
+        return context;
     }
 
     private class Page

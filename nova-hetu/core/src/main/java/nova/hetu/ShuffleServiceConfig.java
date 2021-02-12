@@ -21,6 +21,12 @@ import java.net.UnknownHostException;
 
 public class ShuffleServiceConfig
 {
+    public enum TransportType
+    {
+        RSOCKET,
+        UCX
+    }
+
     private boolean enabled = true;
     private String host;
     private int port = 16544;
@@ -71,6 +77,25 @@ public class ShuffleServiceConfig
     }
 
     @Config("shuffle-service.transport")
+    /* // Config file
+    public ShuffleServiceConfig setTransportType(String transportType)
+    {
+        switch (transportType) {
+            case "rsocket":
+                this.transportType = TransportType.RSOCKET;
+                break;
+            case "ucx":
+                this.transportType = TransportType.UCX;
+                break;
+            default:
+                System.out.println("Unknown transport type, setting default to UCX.");
+                this.transportType = TransportType.UCX;
+                break;
+        }
+        return this;
+    }
+    */
+
     public ShuffleServiceConfig setTransportType(TransportType transportType)
     {
         this.transportType = transportType;
@@ -80,11 +105,5 @@ public class ShuffleServiceConfig
     public TransportType getTransportType()
     {
         return transportType;
-    }
-
-    public enum TransportType
-    {
-        RSOCKET,
-        UCX
     }
 }

@@ -19,4 +19,6 @@ public interface ShuffleClientCallback
     void clientFinished();
 
     void clientFailed(Throwable cause);
+
+    int updateRateLimit();
 }

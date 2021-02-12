@@ -18,15 +18,21 @@ import com.google.common.util.concurrent.SettableFuture;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import nova.hetu.shuffle.ShuffleClient;
 import nova.hetu.shuffle.ShuffleClientCallback;
+import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
-import java.util.Queue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+import static nova.hetu.shuffle.stream.Constants.EOS;
 
 public class UcxShuffleClient
         implements ShuffleClient
@@ -35,6 +41,7 @@ public class UcxShuffleClient
     private static final UcxConnectionFactory factory = new UcxConnectionFactory();
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final AtomicInteger idCounter = new AtomicInteger(0);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public UcxShuffleClient() {}
 
@@ -43,8 +50,7 @@ public class UcxShuffleClient
     {
         UcxConnection connection = factory.getOrCreateConnection(host, port);
 
-        // FIXME ratelimit is hardcoded to match rsclient .. but we need to make it variable
-        Fetch fetch = new Fetch(pageOutputBuffer, connection, producerId, UcxConstant.DEFAULT_RATE_LIMIT, shuffleClientCallback);
+        Fetch fetch = new Fetch(pageOutputBuffer, connection, producerId, shuffleClientCallback, closed);
         executor.submit(fetch::getPages);
     }
 
@@ -52,27 +58,32 @@ public class UcxShuffleClient
     public void close()
             throws IOException
     {
+        closed.set(true);
     }
 
     private static class Fetch
     {
         private final UcxConnection connection;
         private final String producerId;
-        private final ShuffleClientCallback callback;
+        private final ShuffleClientCallback shuffleClientCallback;
         private final int id;
         private final LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
-        private final int rateLimit;
+        private final AtomicBoolean closed;
+        private int rateLimit;
         private int msgId;
+        private int numPagesBeforePrefetch;
 
-        public Fetch(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, UcxConnection connection, String producerId, int rateLimit, ShuffleClientCallback callback)
+        public Fetch(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, UcxConnection connection, String producerId, ShuffleClientCallback shuffleClientCallback, AtomicBoolean closed)
         {
             this.msgId = 0;
             this.connection = connection;
             this.producerId = producerId;
-            this.callback = callback;
+            this.shuffleClientCallback = shuffleClientCallback;
             this.id = idCounter.addAndGet(1);
             this.pageOutputBuffer = pageOutputBuffer;
-            this.rateLimit = rateLimit;
+            this.rateLimit = shuffleClientCallback.updateRateLimit();
+            this.numPagesBeforePrefetch = (int) (rateLimit * UcxConstant.DEFAULT_PREFETCH_COEFF);
+            this.closed = closed;
         }
 
         public void getPages()
@@ -82,35 +93,89 @@ public class UcxShuffleClient
                 connection.waitConnected();
             }
             catch (Exception e) {
-                throw new RuntimeException(e);
+                shuffleClientCallback.clientFailed(e);
+                return;
             }
+            UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), DEFAULT_MAX_PAGE_SIZE_IN_BYTES);
+            ucxPageMemoryPool.preAlocate((int)Math.ceil(UcxConstant.DEFAULT_RATE_LIMIT/4), UcxConstant.UCX_MIN_BUFFER_SIZE);
+            SettableFuture<SerializedPage> pendingFuture = null;
+            LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue = new LinkedBlockingQueue<>();
+            int numProcessedPages = 0;
+            connection.requestNbPages(futureQueue, ucxPageMemoryPool, producerId, id, msgId, rateLimit, 0);
+            int lastRateLimit = rateLimit;
+            this.msgId = this.msgId + rateLimit;
+            while (!futureQueue.isEmpty() || !closed.get()) {
+                if (numProcessedPages == numPagesBeforePrefetch) {
+                    lastRateLimit = rateLimit;
+                    rateLimit = shuffleClientCallback.updateRateLimit();
+                    if (rateLimit != lastRateLimit) {
+                        numPagesBeforePrefetch = (int) (rateLimit * UcxConstant.DEFAULT_PREFETCH_COEFF);
+                    }
 
-            boolean isDone = false;
-            while (!isDone) {
-                Queue<SettableFuture<SerializedPage>> futureQueue = connection.requestNbPages(producerId, id, msgId, rateLimit);
-                this.msgId = this.msgId + rateLimit;
-                while (!futureQueue.isEmpty()) {
-                    SettableFuture<SerializedPage> pageFuture = futureQueue.remove();
-                    try {
-                        SerializedPage page = pageFuture.get();
-                        // TODO handle exception ...
-                        if (page != null) {
-                            // TODO : monitor the page output buffer to adapt the ratelimit
-                            pageOutputBuffer.put(page);
+                    // Basically put on hold while the rate limit is not increased
+                    // Maybe too aggressive
+                    while (rateLimit == 0) {
+                        try {
+                            Thread.sleep(50);
                         }
-                        else if (!isDone) {
-                            // Got EoS
-                            isDone = true;
+                        catch (InterruptedException e) {
+                            shuffleClientCallback.clientFailed(e);
+                            break;
+                        }
+                        rateLimit = shuffleClientCallback.updateRateLimit();
+                    }
+                    connection.requestNbPages(futureQueue, ucxPageMemoryPool, producerId, id, msgId, rateLimit, numPagesBeforePrefetch);
+                    this.msgId = this.msgId + rateLimit;
+                }
+                SettableFuture<SerializedPage> pageFuture = futureQueue.remove();
+                numProcessedPages = (numProcessedPages + 1) % lastRateLimit;
+                try {
+                    SerializedPage page = null;
+                    while (page == null && !closed.get()) {
+                        try {
+                            page = pageFuture.get(5, TimeUnit.SECONDS);
+                        }
+                        catch (TimeoutException ignored) {
                         }
                     }
-                    catch (InterruptedException | ExecutionException e) {
-                        callback.clientFailed(e);
-                        isDone = true;
+                    if (page == null) {
+                        pendingFuture = pageFuture;
+                        shuffleClientCallback.clientFinished();
+                        break;
                     }
+                    if (page != EOS) {
+                        // TODO : monitor the page output buffer to adapt the ratelimit
+                        pageOutputBuffer.put(page);
+                    }
+                    else {
+                        // Got EoS
+                        shuffleClientCallback.clientFinished();
+                        break;
+                    }
+                }
+                catch (InterruptedException | ExecutionException e) {
+                    shuffleClientCallback.clientFailed(e);
+                    break;
                 }
             }
             connection.sendDone(producerId, id);
-            callback.clientFinished();
+            while (!futureQueue.isEmpty()) {
+                SettableFuture<SerializedPage> pageFuture = null;
+                if (pendingFuture == null) {
+                    pageFuture = futureQueue.remove();
+                }
+                else {
+                    pageFuture = pendingFuture;
+                    pendingFuture = null;
+                }
+                try {
+                    pageFuture.get();
+                }
+                catch (InterruptedException | ExecutionException e) {
+                    log.warn("Error cleaning up EoS message " + e);
+                }
+            }
+            ucxPageMemoryPool.close();
             log.info(producerId + " GET PAGES DONE.");
         }
     }

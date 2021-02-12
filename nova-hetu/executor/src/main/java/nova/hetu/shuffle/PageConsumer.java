@@ -20,6 +20,7 @@ import io.prestosql.spi.Page;
 import nova.hetu.shuffle.inmemory.LocalShuffleClient;
 import nova.hetu.shuffle.rsocket.RsShuffleClient;
 import nova.hetu.shuffle.stream.PageSerializeUtil;
+import nova.hetu.shuffle.ucx.UcxConstant;
 import nova.hetu.shuffle.ucx.UcxShuffleClient;
 
 import java.io.Closeable;
@@ -42,6 +43,8 @@ public class PageConsumer
     private final AtomicBoolean shuffleClientFinished = new AtomicBoolean();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private ShuffleClient shuffleClient;
+
+    private int rateLimit;
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
     {
@@ -69,9 +72,9 @@ public class PageConsumer
             throw new RuntimeException(e);
         }
 
-        if (producerInfo.getHost().equals("127.0.0.1") || myIP.equals(producerInfo.getHost())) {
-            // TODO: in memory is not work right now.
-//            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
+        boolean local = producerInfo.getHost().equals("127.0.0.1") || producerInfo.getHost().equals("127.0.1.1");
+        if (local || myIP.equals(producerInfo.getHost())) {
+            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
         }
 
         return new PageConsumer(producerInfo, serde, defaultCommMode);
@@ -81,6 +84,9 @@ public class PageConsumer
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
+        this.rateLimit = UcxConstant.DEFAULT_RATE_LIMIT;
+
+        ShuffleClientCallbackImpl shuffleClientCallbackImpl = new ShuffleClientCallbackImpl();
 
         switch (commMode) {
             case INMEMORY:
@@ -96,7 +102,7 @@ public class PageConsumer
             default:
                 throw new RuntimeException("Unsupported PageConsumer type: " + commMode);
         }
-        shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, new ShuffleClientCallbackImpl());
+        shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, shuffleClientCallbackImpl);
     }
 
     public Page poll()
@@ -115,6 +121,38 @@ public class PageConsumer
     public boolean isEnded()
     {
         return pageOutputBuffer.isEmpty() && shuffleClientFinished.get();
+    }
+
+    public int getPageOutputBufferSize()
+    {
+        return pageOutputBuffer.size();
+    }
+
+    public long getTotalPagesRetainedSizeInBytes()
+    {
+        return pageOutputBuffer.stream()
+                .mapToLong(SerializedPage::getRetainedSizeInBytes)
+                .sum();
+    }
+
+    public long getTotalSizeInBytes()
+    {
+        return pageOutputBuffer.stream()
+                .mapToLong(SerializedPage::getSizeInBytes)
+                .sum();
+    }
+
+    public int getRateLimit()
+    {
+        return rateLimit;
+    }
+
+    public void changeRateLimit(int rate)
+    {
+        rateLimit += rate;
+        if (rateLimit < 0) {
+            rateLimit = 0;
+        }
     }
 
     @Override
@@ -141,6 +179,12 @@ public class PageConsumer
             if (!isEnded()) {
                 failure.compareAndSet(null, cause);
             }
+        }
+
+        @Override
+        public int updateRateLimit()
+        {
+            return rateLimit;
         }
     }
 }

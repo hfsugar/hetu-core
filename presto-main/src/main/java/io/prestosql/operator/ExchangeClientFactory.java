@@ -120,7 +120,11 @@ public class ExchangeClientFactory
     public ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
     {
         if (true /** grpc.enabled */) {
-            return new StreamingExchangeClient(pagesSerde, transportType);
+            return new StreamingExchangeClient(maxBufferedBytes,
+                    concurrentRequestMultiplier,
+                    systemMemoryContext,
+                    pagesSerde,
+                    transportType);
         }
         return new HttpExchangeClient(
                 maxBufferedBytes,

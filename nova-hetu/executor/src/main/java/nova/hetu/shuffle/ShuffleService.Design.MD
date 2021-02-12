@@ -37,4 +37,4 @@ The operators receiving pages sent by up stream operator
 There are several (in-the-works) shuffle clients that establish connection with the correspondent server
 and utilize page consuming routines. In order to speed up the in-memory communication and bypass unneeded
 page serialization and deserialization, the `LocalShuffleClient` is implemented. Other than that it's the
-`RsShuffleClient` for Rsocket type of communication. `UcxShuffleClient` is going to be added soon.
+`RsShuffleClient` for Rsocket type of communication, and `UcxShuffleClient` for the Ucx one.

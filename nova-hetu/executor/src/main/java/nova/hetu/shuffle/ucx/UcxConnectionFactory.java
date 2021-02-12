@@ -30,8 +30,6 @@ public class UcxConnectionFactory
         implements Closeable
 {
     private static final ExecutorService executor = Executors.newWorkStealingPool();
-    private static final int minBufferSize = UcxConstant.UCX_MIN_BUFFER_SIZE;
-    private static final int preAllocatedBuffers = UcxConstant.BASE_BUFFER_NB;
     private final ConcurrentMap<String, UcxConnection> allConnections = new ConcurrentHashMap<>();
     private final UcpContext context;
     private final UcxMemoryPool ucxMemoryPool;
@@ -42,8 +40,8 @@ public class UcxConnectionFactory
                 .requestRmaFeature()
                 .requestTagFeature()
                 .setMtWorkersShared(true));
-        this.ucxMemoryPool = new UcxMemoryPool(context, minBufferSize);
-        this.ucxMemoryPool.preAlocate(preAllocatedBuffers, minBufferSize);
+        this.ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        this.ucxMemoryPool.preAlocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MIN_BUFFER_SIZE);
     }
 
     public UcxMemoryPool getMemoryPool()
