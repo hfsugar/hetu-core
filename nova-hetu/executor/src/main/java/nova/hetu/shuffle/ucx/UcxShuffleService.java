@@ -309,6 +309,7 @@ public class UcxShuffleService
                     .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes());
 
             Block[] blocks = page.getBlocks();
+            resources.add(page);
             for (int blockId = 0; blockId < blocks.length; blockId++) {
                 Vec vec = blocks[blockId].getVec();
                 ByteBuffer blockBuffer = vec.getData();

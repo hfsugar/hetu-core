@@ -64,14 +64,6 @@ public class PagesSerde
         this.spillCipher = requireNonNull(spillCipher, "spillCipher is null");
     }
 
-    public SerializedPage serialize(Page page, CommunicationMode commMode)
-    {
-        if (commMode == CommunicationMode.INMEMORY) {
-            return new SerializedPage(page, this);
-        }
-        return serialize(page);
-    }
-
     public SerializedPage serialize(Page page)
     {
         SliceOutput serializationBuffer = new DynamicSliceOutput(toIntExact(page.getSizeInBytes() + Integer.BYTES)); // block length is an int
@@ -163,11 +155,6 @@ public class PagesSerde
     public Page deserialize(SerializedPage serializedPage)
     {
         checkArgument(serializedPage != null, "serializedPage is null");
-
-        Page page = serializedPage.getRawPageReference();
-        if (page != null) {
-            return page;
-        }
 
         Slice slice = serializedPage.getSlice();
 

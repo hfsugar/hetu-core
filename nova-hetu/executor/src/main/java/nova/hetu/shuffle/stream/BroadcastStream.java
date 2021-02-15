@@ -46,7 +46,7 @@ public class BroadcastStream
     private final PagesSerde serde;
     private final String id;
     private boolean eos; // endOfStream
-    private PagesSerde.CommunicationMode commMode;
+    private static final PagesSerde.CommunicationMode commMode = PagesSerde.CommunicationMode.UCX;
 
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
@@ -55,7 +55,6 @@ public class BroadcastStream
     {
         this.id = id;
         this.serde = serde;
-        this.commMode = PagesSerde.CommunicationMode.UCX;
     }
 
     @Override
@@ -84,7 +83,7 @@ public class BroadcastStream
             throws InterruptedException
     {
         List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
-                .map(p -> PageSerializeUtil.serialize(serde, p))
+                .map(p -> PageSerializeUtil.serialize(serde, p, commMode))
                 .collect(Collectors.toList());
 
         if (!channelsAdded) {

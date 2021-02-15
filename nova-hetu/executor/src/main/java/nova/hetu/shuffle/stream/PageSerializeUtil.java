@@ -24,19 +24,21 @@ public class PageSerializeUtil
 {
     private PageSerializeUtil() {}
 
-    public static SerializedPage serialize(PagesSerde serde, Page page)
+    public static SerializedPage serialize(PagesSerde serde, Page page, PagesSerde.CommunicationMode commMode)
     {
-        if (page.isOffHeap()) {
-            return new SerializedPage(page.getBlocks(), PageCodecMarker.MarkerSet.empty(), page.getPositionCount(), (int) page.getSizeInBytes(), page.getPageMetadata());
+        page.acquire();
+        if (page.isOffHeap() && commMode == PagesSerde.CommunicationMode.UCX) {
+            // page release will be called by ucx
+            return new SerializedPage(page.getBlocks(), PageCodecMarker.MarkerSet.empty(), page.getPositionCount(), (int) page.getSizeInBytes(), page.getPageMetadata(), page);
         }
-        return serde.serialize(page);
+        SerializedPage serializedPage = serde.serialize(page);
+        // memory copy of data, releasing immediately
+        page.release();
+        return serializedPage;
     }
 
     public static Page deserialize(PagesSerde serde, SerializedPage serializedPage)
     {
-        if (serializedPage.isOffHeap()) {
-            return new Page(serializedPage.getPositionCount(), serializedPage.getPageMetadata(), serializedPage.getBlocks());
-        }
         return serde.deserialize(serializedPage);
     }
 }

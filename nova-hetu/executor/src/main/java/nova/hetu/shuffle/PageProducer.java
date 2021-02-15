@@ -39,6 +39,7 @@ public class PageProducer
             throws InterruptedException
     {
         stream.write(page);
+        page.release();
     }
 
     public void addConsumers(List<Integer> newConsumers, boolean noMoreConsumers)

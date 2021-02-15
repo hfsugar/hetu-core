@@ -28,6 +28,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.IOException;
+
 import static nova.hetu.shuffle.stream.Constants.EOS;
 
 public class RsShuffleService
@@ -73,9 +75,10 @@ public class RsShuffleService
                         }
                         else {
                             sink.next(DefaultPayload.create(page.getSliceArray(), extractMetadata(page)));
+                            page.close();
                         }
                     }
-                    catch (InterruptedException e) {
+                    catch (IOException | InterruptedException e) {
                         log.error(e.getMessage());
                         throw new RuntimeException(e);
                     }

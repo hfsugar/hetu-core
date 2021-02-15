@@ -176,7 +176,7 @@ public class UcxConnection
         LongVec longVec = new LongVec(blockBuffer, blockBuffer.capacity());
         //page.blocks[blockId] = new LongArrayBlock(positionCount, Optional.empty(), longVec);
         if (page.left.decrementAndGet() == 0) {
-            SerializedPage serializedPage = new SerializedPage(page.blocks, fromByteValue(page.marker), page.positionCount, page.uncompressedSizeInBytes, page.properties);
+            SerializedPage serializedPage = new SerializedPage(page.blocks, fromByteValue(page.marker), page.positionCount, page.uncompressedSizeInBytes, page.properties, null);
             future.set(serializedPage);
         }
     }
