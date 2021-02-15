@@ -21,6 +21,8 @@ import io.prestosql.spi.Page;
 import io.prestosql.spi.block.Block;
 import org.openjdk.jol.info.ClassLayout;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Properties;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -31,6 +33,7 @@ import static io.hetu.core.transport.execution.buffer.PageCodecMarker.MarkerSet.
 import static java.util.Objects.requireNonNull;
 
 public class SerializedPage
+        implements Closeable
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SerializedPage.class).instanceSize();
 
@@ -40,7 +43,6 @@ public class SerializedPage
     private int uncompressedSizeInBytes;
     private byte pageCodecMarkers;
     private final Page page;
-    private PagesSerde pagesSerde;
     private Properties pageMetadata = new Properties();
 
     @JsonCreator
@@ -85,12 +87,6 @@ public class SerializedPage
         populate(slice, markers, positionCount, uncompressedSizeInBytes, pageMetadata);
     }
 
-    public SerializedPage(Page page, PagesSerde pagesSerde)
-    {
-        this.page = requireNonNull(page, "Page cannot be null");
-        this.pagesSerde = requireNonNull(pagesSerde, "Page Serde cannot be null");
-    }
-
     public void populate(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
     {
         this.slice = requireNonNull(slice, "slice is null");
@@ -120,7 +116,7 @@ public class SerializedPage
         this(slice, markers, positionCount, uncompressedSizeInBytes, null, page);
     }
 
-    public SerializedPage(Block[] blocks, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
+    public SerializedPage(Block[] blocks, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata, Page page)
     {
         this.blocks = requireNonNull(blocks, "blocks is null");
         this.positionCount = positionCount;
@@ -128,7 +124,7 @@ public class SerializedPage
         this.uncompressedSizeInBytes = uncompressedSizeInBytes;
         this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
         this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
-        this.page = null;
+        this.page = page;
     }
 
     public int getSizeInBytes()
@@ -234,5 +230,14 @@ public class SerializedPage
                 .add("uncompressedSizeInBytes", uncompressedSizeInBytes)
                 .add("pageMetadata", pageMetadata)
                 .toString();
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        if (page != null) {
+            page.release();
+        }
     }
 }

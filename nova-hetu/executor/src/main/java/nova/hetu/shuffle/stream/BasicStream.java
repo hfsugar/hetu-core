@@ -49,7 +49,7 @@ public class BasicStream
 
     private final PagesSerde serde;
     private final String id;
-    private PagesSerde.CommunicationMode commMode;
+    private PagesSerde.CommunicationMode commMode = PagesSerde.CommunicationMode.INMEMORY;
 
     private boolean eos; // endOfStream
     private boolean channelsAdded;
@@ -95,7 +95,7 @@ public class BasicStream
             throw new IllegalStateException("Stream has already been closed");
         }
         for (Page splittedPage : splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES)) {
-            SerializedPage serializedPage = PageSerializeUtil.serialize(serde, splittedPage);
+            SerializedPage serializedPage = PageSerializeUtil.serialize(serde, splittedPage, commMode);
             queue.put(serializedPage);
         }
     }
