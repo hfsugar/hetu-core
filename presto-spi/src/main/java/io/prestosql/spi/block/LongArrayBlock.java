@@ -14,6 +14,7 @@
 package io.prestosql.spi.block;
 
 import io.prestosql.spi.util.BloomFilter;
+import nova.hetu.omnicache.vector.LongVec;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
@@ -41,7 +42,7 @@ public class LongArrayBlock
     private final int positionCount;
     @Nullable
     private final boolean[] valueIsNull;
-    private final long[] values; //change to use offheap --> accessible by RDMA
+    private final LongVec values;
 
     private final long sizeInBytes;
     private final long retainedSizeInBytes;
@@ -49,6 +50,11 @@ public class LongArrayBlock
     public LongArrayBlock(int positionCount, Optional<boolean[]> valueIsNull, long[] values)
     {
         this(0, positionCount, valueIsNull.orElse(null), values);
+    }
+
+    public LongArrayBlock(int positionCount, Optional<boolean[]> valueIsNull, LongVec longVec)
+    {
+        this(0, positionCount, valueIsNull.orElse(null), longVec);
     }
 
     LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values)
@@ -65,7 +71,10 @@ public class LongArrayBlock
         if (values.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
-        this.values = values;
+        this.values = new LongVec(values.length);
+        for (int idx = 0; idx < values.length; idx++) {
+            this.values.set(idx, values[idx]);
+        }
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -74,6 +83,37 @@ public class LongArrayBlock
 
         sizeInBytes = (Long.BYTES + Byte.BYTES) * (long) positionCount;
         retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
+    }
+
+    public LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, LongVec longVec)
+    {
+        if (arrayOffset < 0) {
+            throw new IllegalArgumentException("arrayOffset is negative");
+        }
+        this.arrayOffset = arrayOffset;
+        if (positionCount < 0) {
+            throw new IllegalArgumentException("positionCount is negative");
+        }
+        this.positionCount = positionCount;
+
+        if (longVec.size() - arrayOffset < positionCount) {
+            throw new IllegalArgumentException("values length is less than positionCount");
+        }
+        this.values = longVec;
+
+        if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
+            throw new IllegalArgumentException("isNull length is less than positionCount");
+        }
+        this.valueIsNull = valueIsNull;
+
+        sizeInBytes = (Long.BYTES + Byte.BYTES) * (long) positionCount;
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + values.capacity();
+    }
+
+    @Override
+    public LongVec getValuesVec()
+    {
+        return values;
     }
 
     @Override
@@ -109,7 +149,12 @@ public class LongArrayBlock
     @Override
     public void retainedBytesForEachPart(BiConsumer<Object, Long> consumer)
     {
-        consumer.accept(values, sizeOf(values));
+        // TODO: try to avoid copy here
+        long[] valuesArray = new long[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            valuesArray[i] = values.get(i);
+        }
+        consumer.accept(valuesArray, sizeOf(valuesArray));
         if (valueIsNull != null) {
             consumer.accept(valueIsNull, sizeOf(valueIsNull));
         }
@@ -129,7 +174,7 @@ public class LongArrayBlock
         if (offset != 0) {
             throw new IllegalArgumentException("offset must be zero");
         }
-        return values[position + arrayOffset];
+        return values.get(position + arrayOffset);
     }
 
     public Long get(int position)
@@ -137,7 +182,7 @@ public class LongArrayBlock
         if (valueIsNull != null && valueIsNull[position + arrayOffset]) {
             return null;
         }
-        return values[position + arrayOffset];
+        return values.get(position + arrayOffset);
     }
 
     @Override
@@ -149,41 +194,7 @@ public class LongArrayBlock
         if (offset != 0) {
             throw new IllegalArgumentException("offset must be zero");
         }
-        return toIntExact(values[position + arrayOffset]);
-    }
-
-    @Override
-    @Deprecated
-    // TODO: Remove when we fix intermediate types on aggregations.
-    public short getShort(int position, int offset)
-    {
-        checkReadablePosition(position);
-        if (offset != 0) {
-            throw new IllegalArgumentException("offset must be zero");
-        }
-
-        short value = (short) (values[position + arrayOffset]);
-        if (value != values[position + arrayOffset]) {
-            throw new ArithmeticException("short overflow");
-        }
-        return value;
-    }
-
-    @Override
-    @Deprecated
-    // TODO: Remove when we fix intermediate types on aggregations.
-    public byte getByte(int position, int offset)
-    {
-        checkReadablePosition(position);
-        if (offset != 0) {
-            throw new IllegalArgumentException("offset must be zero");
-        }
-
-        byte value = (byte) (values[position + arrayOffset]);
-        if (value != values[position + arrayOffset]) {
-            throw new ArithmeticException("byte overflow");
-        }
-        return value;
+        return toIntExact(values.get(position + arrayOffset));
     }
 
     @Override
@@ -203,7 +214,7 @@ public class LongArrayBlock
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeLong(values[position + arrayOffset]);
+        blockBuilder.writeLong(values.get(position + arrayOffset));
         blockBuilder.closeEntry();
     }
 
@@ -215,7 +226,7 @@ public class LongArrayBlock
                 0,
                 1,
                 isNull(position) ? new boolean[] {true} : null,
-                new long[] {values[position + arrayOffset]});
+                new long[] {values.get(position + arrayOffset)});
     }
 
     @Override
@@ -234,7 +245,7 @@ public class LongArrayBlock
             if (valueIsNull != null) {
                 newValueIsNull[i] = valueIsNull[position + arrayOffset];
             }
-            newValues[i] = values[position + arrayOffset];
+            newValues[i] = values.get(position + arrayOffset);
         }
         return new LongArrayBlock(0, length, newValueIsNull, newValues);
     }
@@ -243,7 +254,6 @@ public class LongArrayBlock
     public Block getRegion(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
-
         return new LongArrayBlock(positionOffset + arrayOffset, length, valueIsNull, values);
     }
 
@@ -251,10 +261,13 @@ public class LongArrayBlock
     public Block copyRegion(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
-
         positionOffset += arrayOffset;
+
+        LongVec newValues = new LongVec(length);
+        for (int i = 0; i < length; i++) {
+            newValues.set(i, this.values.get(positionOffset + i));
+        }
         boolean[] newValueIsNull = valueIsNull == null ? null : compactArray(valueIsNull, positionOffset, length);
-        long[] newValues = compactArray(values, positionOffset, length);
 
         if (newValueIsNull == valueIsNull && newValues == values) {
             return this;
@@ -287,9 +300,10 @@ public class LongArrayBlock
     @Override
     public boolean[] filter(BloomFilter filter, boolean[] validPositions)
     {
-        for (int i = arrayOffset; i < positionCount; i++) {
-            validPositions[i] = validPositions[i] && filter.test(values[i]);
+        for (int i = 0; i < values.size(); i++) {
+            validPositions[i] = validPositions[i] && filter.test(values.get(i));
         }
+
         return validPositions;
     }
 
@@ -303,7 +317,7 @@ public class LongArrayBlock
                     matchedPositions[matchCount++] = positions[i];
                 }
             }
-            else if (test.apply(values[positions[i] + arrayOffset])) {
+            else if (test.apply(values.get(positions[i] + arrayOffset))) {
                 matchedPositions[matchCount++] = positions[i];
             }
         }
