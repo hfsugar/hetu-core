@@ -35,6 +35,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.Executor;
 
 import static com.google.common.base.Throwables.throwIfUnchecked;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.execution.SqlTaskExecution.createSqlTaskExecution;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.BROADCAST;
 import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
@@ -51,6 +52,7 @@ public class SqlTaskExecutionFactory
     private final SplitMonitor splitMonitor;
     private final boolean perOperatorCpuTimerEnabled;
     private final boolean cpuTimerEnabled;
+    private boolean shuffleService;
 
     public SqlTaskExecutionFactory(
             Executor taskNotificationExecutor,
@@ -76,8 +78,15 @@ public class SqlTaskExecutionFactory
                 perOperatorCpuTimerEnabled,
                 cpuTimerEnabled,
                 totalPartitions);
-        List<PageProducer> producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers);
 
+        List<PageProducer> producers;
+
+        if (isShuffleServiceEnabled(session)) {
+            producers = createProducers(taskStateMachine.getTaskId(), totalPartitions, pagesSerde, outputBuffers);
+        }
+        else {
+            producers = new ArrayList<>();
+        }
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
             try {

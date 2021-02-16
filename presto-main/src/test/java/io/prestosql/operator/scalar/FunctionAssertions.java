@@ -82,6 +82,7 @@ import io.prestosql.sql.tree.NodeRef;
 import io.prestosql.sql.tree.SymbolReference;
 import io.prestosql.testing.LocalQueryRunner;
 import io.prestosql.testing.MaterializedResult;
+import nova.hetu.ShuffleServiceConfig;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.openjdk.jol.info.ClassLayout;
@@ -220,13 +221,13 @@ public final class FunctionAssertions
 
     public FunctionAssertions(Session session)
     {
-        this(session, new FeaturesConfig());
+        this(session, new FeaturesConfig(), new ShuffleServiceConfig());
     }
 
-    public FunctionAssertions(Session session, FeaturesConfig featuresConfig)
+    public FunctionAssertions(Session session, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleServiceConfig)
     {
         this.session = requireNonNull(session, "session is null");
-        runner = new LocalQueryRunner(session, featuresConfig);
+        runner = new LocalQueryRunner(session, featuresConfig, shuffleServiceConfig);
         metadata = runner.getMetadata();
         compiler = runner.getExpressionCompiler();
         typeAnalyzer = new TypeAnalyzer(SQL_PARSER, metadata);

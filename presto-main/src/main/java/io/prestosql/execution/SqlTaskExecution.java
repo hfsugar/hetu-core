@@ -72,6 +72,7 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static io.prestosql.SystemSessionProperties.getInitialSplitsPerNode;
 import static io.prestosql.SystemSessionProperties.getMaxDriversPerTask;
 import static io.prestosql.SystemSessionProperties.getSplitConcurrencyAdjustmentInterval;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.ADDING_SPLITS;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.FINISHED;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.NO_MORE_SPLITS;
@@ -673,20 +674,23 @@ public class SqlTaskExecution
         }
 
         // no more output will be created
-        outputBuffer.setNoMorePages();
-        closeProducers(producers);
-
-        for (PageProducer producer : producers) {
-            // There are still pages buffered in producers, do nothing
-            if (!producer.isClosed()) {
+        if (!isShuffleServiceEnabled(taskContext.getSession())) {
+            outputBuffer.setNoMorePages();
+            if (!outputBuffer.isFinished()) {
                 return;
             }
         }
+        else {
+            // are there still pages in the output buffer
+            closeProducers(producers);
 
-        // are there still pages in the output buffer
-//        if (!outputBuffer.isFinished()) {
-//            return;
-//        }
+            for (PageProducer producer : producers) {
+                // There are still pages buffered in producers, do nothing
+                if (!producer.isClosed()) {
+                    return;
+                }
+            }
+        }
 
         // Cool! All done!
         taskStateMachine.finished();

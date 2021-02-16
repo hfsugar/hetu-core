@@ -133,9 +133,13 @@ public class PrestoServer
 
         try {
             Injector injector = app.strictConfig().initialize();
+            ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
 
-            ShuffleServer shuffleServer = ShuffleServerFactory.create(injector.getInstance(ShuffleServiceConfig.class));
-            shuffleServer.start();
+            if (shuffleServiceConfig.isEnabled()) {
+                ShuffleServer shuffleServer = ShuffleServerFactory.create(injector.getInstance(ShuffleServiceConfig.class));
+                shuffleServer.start();
+            }
+
             logLocation(log, "Working directory", Paths.get("."));
             logLocation(log, "Etc directory", Paths.get("etc"));
 

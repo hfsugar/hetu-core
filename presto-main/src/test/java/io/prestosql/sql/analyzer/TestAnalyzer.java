@@ -53,6 +53,7 @@ import io.prestosql.transaction.TransactionId;
 import io.prestosql.transaction.TransactionInfo;
 import io.prestosql.transaction.TransactionManager;
 import io.prestosql.utils.HetuConfig;
+import nova.hetu.ShuffleServiceConfig;
 import org.intellij.lang.annotations.Language;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -583,6 +584,7 @@ public class TestAnalyzer
                 new TaskManagerConfig(),
                 new MemoryManagerConfig(),
                 new FeaturesConfig().setMaxGroupingSets(2048),
+                new ShuffleServiceConfig(),
                 new HetuConfig()))).build();
         analyze(session, "SELECT a, b, c, d, e, f, g, h, i, j, k, SUM(l)" +
                 "FROM (VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))\n" +

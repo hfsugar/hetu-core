@@ -97,7 +97,7 @@ public class UcxShuffleClient
                 return;
             }
             UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), DEFAULT_MAX_PAGE_SIZE_IN_BYTES);
-            ucxPageMemoryPool.preAlocate((int)Math.ceil(UcxConstant.DEFAULT_RATE_LIMIT/4), UcxConstant.UCX_MIN_BUFFER_SIZE);
+            ucxPageMemoryPool.preAlocate((int) Math.ceil(UcxConstant.DEFAULT_RATE_LIMIT / 4), UcxConstant.UCX_MIN_BUFFER_SIZE);
             SettableFuture<SerializedPage> pendingFuture = null;
             LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue = new LinkedBlockingQueue<>();
             int numProcessedPages = 0;

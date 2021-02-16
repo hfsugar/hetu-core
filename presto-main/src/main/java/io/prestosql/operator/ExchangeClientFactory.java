@@ -48,6 +48,7 @@ public class ExchangeClientFactory
     private final ScheduledExecutorService scheduler;
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
+    private final boolean exchangeEnabled;
     private final ShuffleServiceConfig.TransportType transportType;
 
     @Inject
@@ -66,7 +67,8 @@ public class ExchangeClientFactory
                 exchangeClientConfig.getPageBufferClientMaxCallbackThreads(),
                 shuffleServiceConfig.getTransportType(),
                 httpClient,
-                scheduler);
+                scheduler,
+                exchangeClientConfig.isExchangeEnabled());
     }
 
     public ExchangeClientFactory(
@@ -78,7 +80,8 @@ public class ExchangeClientFactory
             int pageBufferClientMaxCallbackThreads,
             ShuffleServiceConfig.TransportType transportType,
             HttpClient httpClient,
-            ScheduledExecutorService scheduler)
+            ScheduledExecutorService scheduler,
+            boolean exchangeEnabled)
     {
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -97,7 +100,7 @@ public class ExchangeClientFactory
 
         this.pageBufferClientCallbackExecutor = newFixedThreadPool(pageBufferClientMaxCallbackThreads, daemonThreadsNamed("page-buffer-client-callback-%s"));
         this.executorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) pageBufferClientCallbackExecutor);
-
+        this.exchangeEnabled = exchangeEnabled;
         checkArgument(maxBufferedBytes.toBytes() > 0, "maxBufferSize must be at least 1 byte: %s", maxBufferedBytes);
         checkArgument(maxResponseSize.toBytes() > 0, "maxResponseSize must be at least 1 byte: %s", maxResponseSize);
         checkArgument(concurrentRequestMultiplier > 0, "concurrentRequestMultiplier must be at least 1: %s", concurrentRequestMultiplier);
@@ -119,7 +122,7 @@ public class ExchangeClientFactory
     @Override
     public ExchangeClient get(LocalMemoryContext systemMemoryContext, PagesSerde pagesSerde)
     {
-        if (true /** grpc.enabled */) {
+        if (!exchangeEnabled) {
             return new StreamingExchangeClient(maxBufferedBytes,
                     concurrentRequestMultiplier,
                     systemMemoryContext,

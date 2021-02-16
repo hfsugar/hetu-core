@@ -22,6 +22,7 @@ import io.prestosql.spi.type.ArrayType;
 import io.prestosql.spi.type.StandardTypes;
 import io.prestosql.sql.analyzer.FeaturesConfig;
 import io.prestosql.sql.analyzer.RegexLibrary;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -38,7 +39,7 @@ public abstract class AbstractTestRegexpFunctions
 {
     AbstractTestRegexpFunctions(RegexLibrary regexLibrary)
     {
-        super(new FeaturesConfig().setRegexLibrary(regexLibrary));
+        super(new FeaturesConfig().setRegexLibrary(regexLibrary), new ShuffleServiceConfig());
     }
 
     @BeforeClass

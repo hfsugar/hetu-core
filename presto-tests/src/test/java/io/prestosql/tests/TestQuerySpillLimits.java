@@ -22,6 +22,7 @@ import io.prestosql.spiller.NodeSpillConfig;
 import io.prestosql.sql.analyzer.FeaturesConfig;
 import io.prestosql.testing.LocalQueryRunner;
 import io.prestosql.testing.QueryRunner;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -78,6 +79,7 @@ public class TestQuerySpillLimits
                 new FeaturesConfig()
                         .setSpillerSpillPaths(spillPath.getAbsolutePath())
                         .setSpillEnabled(true),
+                new ShuffleServiceConfig(),
                 nodeSpillConfig,
                 false,
                 true);

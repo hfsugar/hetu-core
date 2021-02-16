@@ -29,6 +29,7 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
@@ -443,12 +444,12 @@ public class PartitionedOutputOperator
                     partitionPageBuilder.reset();
 
                     try {
-                        // TODO: choose based on configurations
-                        if (false) {
-                            outputBuffer.enqueue(partition, pagePartition);
+                        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
+                        if (shuffleServiceConfig.isEnabled()) {
+                            pageProducers.get(partition).send(pagePartition);
                         }
                         else {
-                            pageProducers.get(partition).send(pagePartition);
+                            outputBuffer.enqueue(partition, pagePartition);
                         }
                         pagesAdded.incrementAndGet();
                         rowsAdded.addAndGet(pagePartition.getPositionCount());
