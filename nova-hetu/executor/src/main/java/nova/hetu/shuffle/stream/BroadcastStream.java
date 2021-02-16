@@ -19,6 +19,7 @@ import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 import org.apache.log4j.Logger;
 
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -88,6 +89,7 @@ public class BroadcastStream
 
         if (!channelsAdded) {
             for (SerializedPage splittedPage : serializedPages) {
+                splittedPage.acquire();
                 pendingPages.put(splittedPage);
 //                log.info("Stream " + id + " write initial pages " + page);
             }
@@ -95,6 +97,7 @@ public class BroadcastStream
 
         for (BlockingQueue<SerializedPage> channel : channels.values()) {
             for (SerializedPage splittedPage : serializedPages) {
+                splittedPage.acquire();
                 channel.put(splittedPage);
 //                log.info("Stream " + id + " write channel " + channel.toString() + " page " + page);
             }
@@ -133,12 +136,20 @@ public class BroadcastStream
         for (SerializedPage page : pendingPages) {
             newChannels.stream().map(channels::get).forEach(channel -> {
                 try {
+                    page.acquire();
                     channel.put(page);
                 }
                 catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             });
+            try {
+                // we acquired the page once when we added it to the pending pages list, we need to release it once to make sure it's freed
+                page.close();
+            }
+            catch (IOException e) {
+                log.warn(e);
+            }
         }
 
         if (noMoreChannels) {
