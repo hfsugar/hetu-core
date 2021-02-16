@@ -22,14 +22,11 @@ import io.prestosql.spi.Page;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockEncodingSerde;
 import io.prestosql.spi.block.LongArrayBlock;
-import nova.hetu.shuffle.PageConsumer;
-import nova.hetu.shuffle.PageProducer;
 
 import java.util.Optional;
 import java.util.Random;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static org.testng.Assert.assertEquals;
 
 public class ShuffleServiceTestUtil
 {
@@ -43,73 +40,6 @@ public class ShuffleServiceTestUtil
         long[] values = new long[] {count};
         Block block = new LongArrayBlock(1, Optional.empty(), values);
         return new Page(block);
-    }
-
-    static Thread createConsumerThread(PageConsumer consumer, long[] result, int delay)
-    {
-        return new Thread(() -> {
-            try {
-                Thread.currentThread().setName("consumer thread");
-                Random random = new Random();
-                int count = 0;
-                while (!consumer.isEnded()) {
-                    Page page = consumer.poll();
-                    if (page == null) {
-                        continue;
-                    }
-                    count++;
-                    int value = (int) page.getBlock(0).getLong(0, 0);
-                    assertEquals(0, result[value], "received duplicate page");
-                    result[value] = value;
-//                    System.out.println(consumer.toString() + " taking the output: " + page + " content:" + page.getBlock(0).getLong(0, 0));
-                    if (delay > 0) {
-                        Thread.sleep(random.nextInt(delay));
-                    }
-                }
-                System.out.println("taking the output ended, :" + count);
-            }
-            catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    /**
-     * The test assumes the page value will be int and the values[idx] = idx;
-     * This is to simplify the verification of the transport layer correctness
-     *
-     * @param producer
-     * @param start start value
-     * @param end end value
-     * @param delay amount of delay between sending pages
-     * @return
-     */
-    static Thread createProducerThread(PageProducer producer, int start, int end, int delay)
-    {
-        return new Thread(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                try {
-                    Random random = new Random();
-                    System.out.println("Producing pages from " + start + " to " + end + " with delay " + delay);
-                    for (int i = start; i < end; i++) {
-//                        System.out.println("sedning: " + i);
-                        producer.send(getPage(i));
-                        if (delay > 0) {
-                            Thread.sleep(random.nextInt(delay));
-                        }
-                    }
-                }
-                catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                catch (Exception e) {
-                    System.out.println(e.getMessage());
-                }
-            }
-        });
     }
 
     static String getTaskId()
