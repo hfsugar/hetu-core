@@ -28,14 +28,12 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.io.IOException;
-
 import static nova.hetu.shuffle.stream.Constants.EOS;
 
 public class RsShuffleService
         implements SocketAcceptor
 {
-    private static Logger log = Logger.getLogger(RsShuffleService.class);
+    private static final Logger log = Logger.getLogger(RsShuffleService.class);
 
     @Override
     public Mono<RSocket> accept(ConnectionSetupPayload connectionSetupPayload, RSocket rSocket)
@@ -75,10 +73,9 @@ public class RsShuffleService
                         }
                         else {
                             sink.next(DefaultPayload.create(page.getSliceArray(), extractMetadata(page)));
-                            page.close();
                         }
                     }
-                    catch (IOException | InterruptedException e) {
+                    catch (InterruptedException e) {
                         log.error(e.getMessage());
                         throw new RuntimeException(e);
                     }

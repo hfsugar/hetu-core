@@ -96,6 +96,8 @@ public class BasicStream
         }
         for (Page splittedPage : splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES)) {
             SerializedPage serializedPage = PageSerializeUtil.serialize(serde, splittedPage, commMode);
+            // we can only acquire the page if its an offHeap page
+            serializedPage.acquire();
             queue.put(serializedPage);
         }
     }
