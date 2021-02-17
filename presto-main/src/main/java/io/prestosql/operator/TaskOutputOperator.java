@@ -19,6 +19,7 @@ import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
@@ -140,8 +141,9 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        if (true /** grpc.enabled = true */) {
-            //redirect to grpc shuffle service
+        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
+        if (shuffleServiceConfig.isEnabled()) {
+            //redirect to shuffle service
             try {
                 pageProducer.send(page);
             }

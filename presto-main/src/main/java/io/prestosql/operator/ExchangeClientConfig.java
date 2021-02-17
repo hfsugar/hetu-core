@@ -36,6 +36,7 @@ public class ExchangeClientConfig
     private int clientThreads = 25;
     private int pageBufferClientMaxCallbackThreads = 25;
     private boolean acknowledgePages = true;
+    private boolean exchangeEnabled;
 
     @NotNull
     public DataSize getMaxBufferSize()
@@ -48,6 +49,18 @@ public class ExchangeClientConfig
     {
         this.maxBufferSize = maxBufferSize;
         return this;
+    }
+
+    @Config("shuffle-service.enabled")
+    public ExchangeClientConfig setExchangeEnabled(boolean shuffleEnabled)
+    {
+        this.exchangeEnabled = !shuffleEnabled;
+        return this;
+    }
+
+    public boolean isExchangeEnabled()
+    {
+        return this.exchangeEnabled;
     }
 
     @Min(1)

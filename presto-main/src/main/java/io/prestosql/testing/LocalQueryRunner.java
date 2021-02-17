@@ -185,6 +185,7 @@ import io.prestosql.transaction.TransactionManagerConfig;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.stream.Stream;
 import org.intellij.lang.annotations.Language;
@@ -279,20 +280,20 @@ public class LocalQueryRunner
 
     public LocalQueryRunner(Session defaultSession)
     {
-        this(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), false, false);
+        this(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), false, false);
     }
 
-    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig)
+    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleServiceConfig)
     {
-        this(defaultSession, featuresConfig, new NodeSpillConfig(), false, false);
+        this(defaultSession, featuresConfig, shuffleServiceConfig, new NodeSpillConfig(), false, false);
     }
 
-    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
+    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
     {
-        this(defaultSession, featuresConfig, nodeSpillConfig, withInitialTransaction, alwaysRevokeMemory, 1);
+        this(defaultSession, featuresConfig, shuffleConfig, nodeSpillConfig, withInitialTransaction, alwaysRevokeMemory, 1);
     }
 
-    private LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory, int nodeCountForStats)
+    private LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory, int nodeCountForStats)
     {
         requireNonNull(defaultSession, "defaultSession is null");
         checkArgument(!defaultSession.getTransactionId().isPresent() || !withInitialTransaction, "Already in transaction");
@@ -328,7 +329,7 @@ public class LocalQueryRunner
         this.metadata = new MetadataManager(
                 featuresConfig,
                 // new HetuConfig object passed, if split filtering is needed in the runner, a modified HetuConfig object with filter settings manually set must be used.
-                new SessionPropertyManager(new SystemSessionProperties(new QueryManagerConfig(), taskManagerConfig, new MemoryManagerConfig(), featuresConfig, new HetuConfig())),
+                new SessionPropertyManager(new SystemSessionProperties(new QueryManagerConfig(), taskManagerConfig, new MemoryManagerConfig(), featuresConfig, shuffleConfig, new HetuConfig())),
                 new SchemaPropertyManager(),
                 new TablePropertyManager(),
                 new ColumnPropertyManager(),
@@ -474,12 +475,12 @@ public class LocalQueryRunner
     public static LocalQueryRunner queryRunnerWithInitialTransaction(Session defaultSession)
     {
         checkArgument(!defaultSession.getTransactionId().isPresent(), "Already in transaction!");
-        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), true, false);
+        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), true, false);
     }
 
     public static LocalQueryRunner queryRunnerWithFakeNodeCountForStats(Session defaultSession, int nodeCount)
     {
-        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), false, false, nodeCount);
+        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), false, false, nodeCount);
     }
 
     @Override

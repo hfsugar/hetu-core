@@ -27,6 +27,7 @@ import io.prestosql.spi.type.SqlDecimal;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.analyzer.FeaturesConfig;
 import io.prestosql.sql.analyzer.SemanticErrorCode;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
@@ -51,6 +52,8 @@ public abstract class AbstractTestFunctions
 {
     protected final Session session;
     private final FeaturesConfig config;
+    private final ShuffleServiceConfig shuffleServiceConfig;
+
     protected FunctionAssertions functionAssertions;
 
     protected AbstractTestFunctions()
@@ -60,24 +63,25 @@ public abstract class AbstractTestFunctions
 
     protected AbstractTestFunctions(Session session)
     {
-        this(session, new FeaturesConfig());
+        this(session, new FeaturesConfig(), new ShuffleServiceConfig());
     }
 
-    protected AbstractTestFunctions(FeaturesConfig config)
+    protected AbstractTestFunctions(FeaturesConfig config, ShuffleServiceConfig shuffleServiceConfig)
     {
-        this(TEST_SESSION, config);
+        this(TEST_SESSION, config, shuffleServiceConfig);
     }
 
-    protected AbstractTestFunctions(Session session, FeaturesConfig config)
+    protected AbstractTestFunctions(Session session, FeaturesConfig config, ShuffleServiceConfig shuffleServiceConfig)
     {
         this.session = requireNonNull(session, "session is null");
         this.config = requireNonNull(config, "config is null");
+        this.shuffleServiceConfig = shuffleServiceConfig;
     }
 
     @BeforeClass
     public final void initTestFunctions()
     {
-        functionAssertions = new FunctionAssertions(session, config);
+        functionAssertions = new FunctionAssertions(session, config, shuffleServiceConfig);
     }
 
     @AfterClass(alwaysRun = true)
