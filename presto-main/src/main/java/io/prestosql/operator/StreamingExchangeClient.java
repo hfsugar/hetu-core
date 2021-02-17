@@ -114,6 +114,10 @@ public class StreamingExchangeClient
             numConsumers--;
         }
 
+        if (page == null) {
+            return null;
+        }
+
         nPolledPages = (nPolledPages + 1) % 100;
         if (nPolledPages == 0) {
 //            increaseOrDecreaseRateLimit();
