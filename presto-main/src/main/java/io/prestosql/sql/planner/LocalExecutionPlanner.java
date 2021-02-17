@@ -207,6 +207,7 @@ import io.prestosql.sql.tree.SymbolReference;
 import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
+import nova.hetu.omnicache.runtime.OmniRuntime;
 
 import nova.hetu.omnicache.runtime.OmniRuntime;
 import nova.hetu.shuffle.PageProducer;
