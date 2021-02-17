@@ -26,15 +26,10 @@ public class PageSerializeUtil
 
     public static SerializedPage serialize(PagesSerde serde, Page page, PagesSerde.CommunicationMode commMode)
     {
-        page.acquire();
         if (page.isOffHeap() && commMode == PagesSerde.CommunicationMode.UCX) {
-            // page release will be called by ucx
             return new SerializedPage(page.getBlocks(), PageCodecMarker.MarkerSet.empty(), page.getPositionCount(), (int) page.getSizeInBytes(), page.getPageMetadata(), page);
         }
-        SerializedPage serializedPage = serde.serialize(page);
-        // memory copy of data, releasing immediately
-        page.release();
-        return serializedPage;
+        return serde.serialize(page);
     }
 
     public static Page deserialize(PagesSerde serde, SerializedPage serializedPage)

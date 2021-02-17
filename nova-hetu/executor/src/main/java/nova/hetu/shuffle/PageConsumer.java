@@ -120,7 +120,7 @@ public class PageConsumer
 
     public boolean isEnded()
     {
-        return pageOutputBuffer.isEmpty() && shuffleClientFinished.get();
+        return shuffleClientFinished.get() && pageOutputBuffer.isEmpty();
     }
 
     public int getPageOutputBufferSize()

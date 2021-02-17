@@ -36,13 +36,12 @@ public class SerializedPage
         implements Closeable
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SerializedPage.class).instanceSize();
-
+    private final Page page;
     private Slice slice;
     private Block[] blocks;
     private int positionCount;
     private int uncompressedSizeInBytes;
     private byte pageCodecMarkers;
-    private final Page page;
     private Properties pageMetadata = new Properties();
 
     @JsonCreator
@@ -87,25 +86,6 @@ public class SerializedPage
         populate(slice, markers, positionCount, uncompressedSizeInBytes, pageMetadata);
     }
 
-    public void populate(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
-    {
-        this.slice = requireNonNull(slice, "slice is null");
-        this.positionCount = positionCount;
-        checkArgument(uncompressedSizeInBytes >= 0, "uncompressedSizeInBytes is negative");
-        this.uncompressedSizeInBytes = uncompressedSizeInBytes;
-        this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
-        this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
-        //  Encrypted pages may include arbitrary overhead from ciphers, sanity checks skipped
-        if (!markers.contains(ENCRYPTED)) {
-            if (markers.contains(COMPRESSED)) {
-                checkArgument(uncompressedSizeInBytes > slice.length(), "compressed size must be smaller than uncompressed size when compressed");
-            }
-            else {
-                checkArgument(uncompressedSizeInBytes == slice.length(), "uncompressed size must be equal to slice length when uncompressed");
-            }
-        }
-    }
-
     public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes)
     {
         this(slice, markers, positionCount, uncompressedSizeInBytes, null, null);
@@ -125,6 +105,33 @@ public class SerializedPage
         this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
         this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
         this.page = page;
+    }
+
+    public void populate(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
+    {
+        this.slice = requireNonNull(slice, "slice is null");
+        this.positionCount = positionCount;
+        checkArgument(uncompressedSizeInBytes >= 0, "uncompressedSizeInBytes is negative");
+        this.uncompressedSizeInBytes = uncompressedSizeInBytes;
+        this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
+        this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
+        //  Encrypted pages may include arbitrary overhead from ciphers, sanity checks skipped
+        if (!markers.contains(ENCRYPTED)) {
+            if (markers.contains(COMPRESSED)) {
+                checkArgument(uncompressedSizeInBytes > slice.length(), "compressed size must be smaller than uncompressed size when compressed");
+            }
+            else {
+                checkArgument(uncompressedSizeInBytes == slice.length(), "uncompressed size must be equal to slice length when uncompressed");
+            }
+        }
+    }
+
+    public void acquire()
+    {
+        if (page != null) {
+            // we acquire the page to make sure the block don't get released, this will be released as part of UCX resource free ops
+            page.acquire();
+        }
     }
 
     public int getSizeInBytes()

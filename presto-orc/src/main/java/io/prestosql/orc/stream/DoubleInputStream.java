@@ -16,6 +16,7 @@ package io.prestosql.orc.stream;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.prestosql.orc.checkpoint.DoubleStreamCheckpoint;
+import nova.hetu.omnicache.vector.DoubleVec;
 
 import java.io.IOException;
 
@@ -62,9 +63,19 @@ public class DoubleInputStream
         return slice.getDouble(0);
     }
 
-    public void next(long[] values, int items)
+    public void next(double[] values, int items)
             throws IOException
     {
-        input.readFully(Slices.wrappedLongArray(values), 0, items * SIZE_OF_DOUBLE);
+        input.readFully(Slices.wrappedDoubleArray(values), 0, items * SIZE_OF_DOUBLE);
+    }
+
+    public void next(DoubleVec values, int items)
+            throws IOException
+    {
+        double[] buffer = new double[values.size()];
+        input.readFully(Slices.wrappedDoubleArray(buffer), 0, items * SIZE_OF_DOUBLE);
+        for (int i = 0; i < values.size(); i++) {
+            values.set(i, buffer[i]);
+        }
     }
 }
