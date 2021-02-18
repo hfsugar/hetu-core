@@ -84,7 +84,7 @@ public final class HashAggregationOmniWork<O>
     {
         checkState(finished, "process has not finished");
 
-        result = (Vec[]) omniRuntime.execute(compileID.get(0), omniKey, null, 0, outTypes, OmniOpStep.FINAL);
+        result = (Vec[]) omniRuntime.getResults(omniKey, outTypes);
 
         return toResult(result);
     }
