@@ -59,7 +59,8 @@ public class StreamingExchangeClient
 
     private final LocalMemoryContext systemMemoryContext;
     private final PagesSerde pagesSerde;
-    int nPolledPages;
+    private int nPolledPages;
+    private boolean dynamicRateLimit;
 
     public StreamingExchangeClient(DataSize bufferCapacity,
             int concurrentRequestMultiplier,
@@ -72,8 +73,10 @@ public class StreamingExchangeClient
         this.systemMemoryContext = systemMemoryContext;
         this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
         this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
+        this.bufferRetainedSizeInBytes = 0;
         this.nPolledPages = 0;
         this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
+        this.dynamicRateLimit = false;
     }
 
     @Override
@@ -118,15 +121,18 @@ public class StreamingExchangeClient
             return null;
         }
 
-        nPolledPages = (nPolledPages + 1) % 100;
-        if (nPolledPages == 0) {
-//            increaseOrDecreaseRateLimit();
+        if (dynamicRateLimit && nPolledPages == 0) {
+            increaseOrDecreaseRateLimit();
         }
+        nPolledPages = (nPolledPages + 1) % 100;
 
         synchronized (this) {
-            if (!closed.get()) {
-                bufferRetainedSizeInBytes -= page.getRetainedSizeInBytes();
-                systemMemoryContext.setBytes(bufferRetainedSizeInBytes);
+            if (dynamicRateLimit && !closed.get()) {
+                long pageRetainedSizeInBytes = page.getRetainedSizeInBytes();
+                if (bufferRetainedSizeInBytes > pageRetainedSizeInBytes) {
+                    bufferRetainedSizeInBytes -= pageRetainedSizeInBytes;
+                    systemMemoryContext.setBytes(bufferRetainedSizeInBytes);
+                }
             }
         }
 
