@@ -562,7 +562,7 @@ public class TestOrcPageSourceMemoryTracking
                     ReuseExchangeOperator.STRATEGY.REUSE_STRATEGY_DEFAULT, 0, false, Optional.empty(), 0, 0);
             SourceOperator operator = sourceOperatorFactory.createOperator(driverContext);
             operator.addSplit(new Split(new CatalogName("test"), TestingSplit.createLocalSplit(), Lifespan.taskWide()));
-            operator.noMoreSplits();
+            operator.setNoMoreSplits();
             return operator;
         }
 

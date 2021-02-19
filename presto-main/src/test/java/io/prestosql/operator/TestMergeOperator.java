@@ -29,6 +29,7 @@ import io.prestosql.spi.type.Type;
 import io.prestosql.split.RemoteSplit;
 import io.prestosql.sql.gen.OrderingCompiler;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -82,7 +83,7 @@ public class TestMergeOperator
 
         taskBuffers = CacheBuilder.newBuilder().build(CacheLoader.from(TestingTaskBuffer::new));
         httpClient = new TestingHttpClient(new TestingExchangeHttpClientHandler(taskBuffers), executor);
-        exchangeClientFactory = new ExchangeClientFactory(new ExchangeClientConfig(), httpClient, executor);
+        exchangeClientFactory = new ExchangeClientFactory(new ExchangeClientConfig(), new ShuffleServiceConfig(), httpClient, executor);
         orderingCompiler = new OrderingCompiler();
     }
 
@@ -116,7 +117,7 @@ public class TestMergeOperator
         assertFalse(operator.isFinished());
         assertFalse(operator.isBlocked().isDone());
 
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> input = rowPagesBuilder(types)
                 .row(1, 1)
@@ -156,7 +157,7 @@ public class TestMergeOperator
         MergeOperator operator = createMergeOperator(types, ImmutableList.of(1, 0), ImmutableList.of(1, 0), ImmutableList.of(DESC_NULLS_FIRST, ASC_NULLS_FIRST));
         operator.addSplit(createRemoteSplit(TASK_1_ID));
         operator.addSplit(createRemoteSplit(TASK_2_ID));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> task1Pages = rowPagesBuilder(types)
                 .row(0, null)
@@ -207,7 +208,7 @@ public class TestMergeOperator
         operator.addSplit(createRemoteSplit(TASK_1_ID));
         operator.addSplit(createRemoteSplit(TASK_2_ID));
         operator.addSplit(createRemoteSplit(TASK_3_ID));
-        operator.noMoreSplits();
+        operator.setNoMoreSplits();
 
         List<Page> source1Pages = rowPagesBuilder(types)
                 .row(1, 1, 2)

@@ -41,6 +41,13 @@ import static sun.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET;
 @NotThreadSafe
 public class PagesSerde
 {
+    public enum CommunicationMode
+    {
+        INMEMORY,
+        RSOCKET,
+        UCX
+    }
+
     private static final double MINIMUM_COMPRESSION_RATIO = 0.8;
 
     private final BlockEncodingSerde blockEncodingSerde;
@@ -98,7 +105,51 @@ public class PagesSerde
             slice = Slices.copyOf(slice);
         }
 
-        return new SerializedPage(slice, markers, page.getPositionCount(), uncompressedSize, page.getPageMetadata());
+        return new SerializedPage(slice, markers, page.getPositionCount(), uncompressedSize, page.getPageMetadata(), null);
+    }
+
+    public void serialize(SerializedPage serializedPage)
+    {
+        Page page = serializedPage.getRawPageReference();
+        SliceOutput serializationBuffer = new DynamicSliceOutput(toIntExact(page.getSizeInBytes() + Integer.BYTES)); // block length is an int
+        writeRawPage(page, serializationBuffer, blockEncodingSerde);
+        Slice slice = serializationBuffer.slice();
+        int uncompressedSize = serializationBuffer.size();
+        MarkerSet markers = MarkerSet.empty();
+
+        if (compressor.isPresent()) {
+            byte[] compressed = new byte[compressor.get().maxCompressedLength(uncompressedSize)];
+            int compressedSize = compressor.get().compress(
+                    (byte[]) slice.getBase(),
+                    (int) (slice.getAddress() - ARRAY_BYTE_BASE_OFFSET),
+                    uncompressedSize,
+                    compressed,
+                    0,
+                    compressed.length);
+
+            if ((((double) compressedSize) / uncompressedSize) <= MINIMUM_COMPRESSION_RATIO) {
+                slice = Slices.wrappedBuffer(compressed, 0, compressedSize);
+                markers.add(COMPRESSED);
+            }
+        }
+
+        if (spillCipher.isPresent()) {
+            byte[] encrypted = new byte[spillCipher.get().encryptedMaxLength(slice.length())];
+            int encryptedSize = spillCipher.get().encrypt(
+                    (byte[]) slice.getBase(),
+                    (int) (slice.getAddress() - ARRAY_BYTE_BASE_OFFSET),
+                    slice.length(),
+                    encrypted,
+                    0);
+
+            slice = Slices.wrappedBuffer(encrypted, 0, encryptedSize);
+            markers.add(ENCRYPTED);
+        }
+
+        if (!slice.isCompact()) {
+            slice = Slices.copyOf(slice);
+        }
+        serializedPage.populate(slice, markers, page.getPositionCount(), uncompressedSize, page.getPageMetadata());
     }
 
     public Page deserialize(SerializedPage serializedPage)

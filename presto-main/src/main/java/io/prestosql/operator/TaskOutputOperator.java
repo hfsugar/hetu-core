@@ -14,20 +14,17 @@
 package io.prestosql.operator;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
-import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.ShuffleServiceConfig;
+import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
 import java.util.function.Function;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.prestosql.execution.buffer.PageSplitterUtil.splitPage;
-import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static java.util.Objects.requireNonNull;
 
 public class TaskOutputOperator
@@ -37,16 +34,18 @@ public class TaskOutputOperator
             implements OutputFactory
     {
         private final OutputBuffer outputBuffer;
+        private final PageProducer pageProducer;
 
-        public TaskOutputFactory(OutputBuffer outputBuffer)
+        public TaskOutputFactory(OutputBuffer outputBuffer, PageProducer pageProducer)
         {
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.pageProducer = requireNonNull(pageProducer, "outputStreams is null");
         }
 
         @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pageLayoutProcessor, PagesSerdeFactory serdeFactory)
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, pageProducer);
         }
     }
 
@@ -56,23 +55,23 @@ public class TaskOutputOperator
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final OutputBuffer outputBuffer;
+        private final PageProducer pageProducer;
         private final Function<Page, Page> pagePreprocessor;
-        private final PagesSerdeFactory serdeFactory;
 
-        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PageProducer pageProducer)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
+            this.pageProducer = requireNonNull(pageProducer, "outputStreams is null");
         }
 
         @Override
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
-            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, pageProducer);
         }
 
         @Override
@@ -83,22 +82,22 @@ public class TaskOutputOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, pageProducer);
         }
     }
 
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
+    private final PageProducer pageProducer;
     private final Function<Page, Page> pagePreprocessor;
-    private final PagesSerde serde;
     private boolean finished;
 
-    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PageProducer pageProducer)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde();
+        this.pageProducer = requireNonNull(pageProducer, "pageProducer is null");
     }
 
     @Override
@@ -142,11 +141,19 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
-                .map(serde::serialize)
-                .collect(toImmutableList());
-
-        outputBuffer.enqueue(serializedPages);
+        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
+        if (shuffleServiceConfig.isEnabled()) {
+            //redirect to shuffle service
+            try {
+                pageProducer.send(page);
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        else {
+            outputBuffer.enqueue(page);
+        }
         operatorContext.recordOutput(page.getSizeInBytes(), page.getPositionCount());
     }
 

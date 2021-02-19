@@ -15,7 +15,6 @@ package io.prestosql.execution.scheduler;
 
 import com.google.common.collect.ImmutableList;
 import io.prestosql.execution.buffer.OutputBuffers;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 import org.testng.annotations.Test;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -34,30 +33,30 @@ public class TestBroadcastOutputBufferManager
         BroadcastOutputBufferManager hashOutputBufferManager = new BroadcastOutputBufferManager(outputBufferTarget::set);
         assertEquals(outputBufferTarget.get(), createInitialEmptyOutputBuffers(BROADCAST));
 
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(0)), false);
-        OutputBuffers expectedOutputBuffers = createInitialEmptyOutputBuffers(BROADCAST).withBuffer(new OutputBufferId(0), BROADCAST_PARTITION_ID);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(0)), false);
+        OutputBuffers expectedOutputBuffers = createInitialEmptyOutputBuffers(BROADCAST).withBuffer(String.valueOf(0), BROADCAST_PARTITION_ID);
         assertEquals(outputBufferTarget.get(), expectedOutputBuffers);
 
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(1), new OutputBufferId(2)), false);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(1), String.valueOf(2)), false);
 
-        expectedOutputBuffers = expectedOutputBuffers.withBuffer(new OutputBufferId(1), BROADCAST_PARTITION_ID);
-        expectedOutputBuffers = expectedOutputBuffers.withBuffer(new OutputBufferId(2), BROADCAST_PARTITION_ID);
+        expectedOutputBuffers = expectedOutputBuffers.withBuffer(String.valueOf(1), BROADCAST_PARTITION_ID);
+        expectedOutputBuffers = expectedOutputBuffers.withBuffer(String.valueOf(2), BROADCAST_PARTITION_ID);
         assertEquals(outputBufferTarget.get(), expectedOutputBuffers);
 
         // set no more buffers
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(3)), true);
-        expectedOutputBuffers = expectedOutputBuffers.withBuffer(new OutputBufferId(3), BROADCAST_PARTITION_ID);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(3)), true);
+        expectedOutputBuffers = expectedOutputBuffers.withBuffer(String.valueOf(3), BROADCAST_PARTITION_ID);
         expectedOutputBuffers = expectedOutputBuffers.withNoMoreBufferIds();
         assertEquals(outputBufferTarget.get(), expectedOutputBuffers);
 
         // try to add another buffer, which should not result in an error
         // and output buffers should not change
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(5)), false);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(5)), false);
         assertEquals(outputBufferTarget.get(), expectedOutputBuffers);
 
         // try to set no more buffers again, which should not result in an error
         // and output buffers should not change
-        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(new OutputBufferId(6)), true);
+        hashOutputBufferManager.addOutputBuffers(ImmutableList.of(String.valueOf(6)), true);
         assertEquals(outputBufferTarget.get(), expectedOutputBuffers);
     }
 }

@@ -124,6 +124,7 @@
             <groupId>io.hetu.core</groupId>
             <artifactId>omni-cache</artifactId>
             <version>1.2.0-SNAPSHOT</version>
+            <scope>compile</scope>
             <exclusions>
                 <exclusion>
                     <groupId>com.google.guava</groupId>

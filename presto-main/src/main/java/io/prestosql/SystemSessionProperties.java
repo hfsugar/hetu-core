@@ -27,6 +27,7 @@ import io.prestosql.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import io.prestosql.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
 import io.prestosql.sql.analyzer.FeaturesConfig.RedistributeWritesType;
 import io.prestosql.utils.HetuConfig;
+import nova.hetu.ShuffleServiceConfig;
 
 import javax.inject.Inject;
 
@@ -143,6 +144,7 @@ public final class SystemSessionProperties
     public static final String ENABLE_EXECUTION_PLAN_CACHE = "enable_execution_plan_cache";
     public static final String ENABLE_CROSS_REGION_DYNAMIC_FILTER = "cross_region_dynamic_filter_enabled";
     public static final String ENABLE_HEURISTICINDEX_FILTER = "heuristicindex_filter_enabled";
+    public static final String SHUFFLESERVICE_ENABLE = "shuffle_service.enabled";
     public static final String PUSH_TABLE_THROUGH_SUBQUERY = "push_table_through_subquery";
     public static final String OPTIMIZE_DYNAMIC_FILTER_GENERATION = "optimize_dynamic_filter_generation";
     public static final String TRANSFORM_SELF_JOIN_TO_GROUPBY = "transform_self_join_to_groupby";
@@ -155,7 +157,7 @@ public final class SystemSessionProperties
 
     public SystemSessionProperties()
     {
-        this(new QueryManagerConfig(), new TaskManagerConfig(), new MemoryManagerConfig(), new FeaturesConfig(), new HetuConfig());
+        this(new QueryManagerConfig(), new TaskManagerConfig(), new MemoryManagerConfig(), new FeaturesConfig(), new ShuffleServiceConfig(), new HetuConfig());
     }
 
     @Inject
@@ -164,6 +166,7 @@ public final class SystemSessionProperties
             TaskManagerConfig taskManagerConfig,
             MemoryManagerConfig memoryManagerConfig,
             FeaturesConfig featuresConfig,
+            ShuffleServiceConfig shuffleConfig,
             HetuConfig hetuConfig)
     {
         sessionProperties = ImmutableList.of(
@@ -690,7 +693,12 @@ public final class SystemSessionProperties
                         SPILL_THRESHOLD_REUSE_TABLESCAN,
                         "Spiller Threshold (in MB) for TableScanOperator and WorkProcessorSourceOperatorAdapter for Reuse Exchange",
                         featuresConfig.getSpillOperatorThresholdReuseExchange(),
-                        false));
+                        false),
+                booleanProperty(
+                        SHUFFLESERVICE_ENABLE,
+                        "enable shuffle service",
+                        shuffleConfig.isEnabled(),
+                        true));
     }
 
     public static boolean isCrossRegionDynamicFilterEnabled(Session session)
@@ -721,6 +729,11 @@ public final class SystemSessionProperties
     public static boolean isRewriteFilteringSemiJoinToInnerJoin(Session session)
     {
         return session.getSystemProperty(FILTERING_SEMI_JOIN_TO_INNER, Boolean.class);
+    }
+
+    public static boolean isShuffleServiceEnabled(Session session)
+    {
+        return session.getSystemProperty(SHUFFLESERVICE_ENABLE, Boolean.class);
     }
 
     public static String getJoinOrder(Session session)

@@ -113,6 +113,22 @@ public interface Block<T>
     }
 
     /**
+     * Get vector data.
+     */
+    default Vec getVec()
+    {
+        return null;
+    }
+
+    /**
+     * Whether this block is off heap byte buffer.
+     */
+    default boolean isOffHeap()
+    {
+        return false;
+    }
+
+    /**
      * Is the byte sequences at {@code offset} in the value at {@code position} equal
      * to the byte sequence at {@code otherOffset} in {@code otherSlice}.
      * This method must be implemented if @{code getSlice} is implemented.

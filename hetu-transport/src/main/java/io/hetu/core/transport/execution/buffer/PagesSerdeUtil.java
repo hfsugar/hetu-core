@@ -107,7 +107,7 @@ public class PagesSerdeUtil
             Properties pros = new Properties();
             try {
                 pros.load(new ByteArrayInputStream(pageMetadataBytes));
-                return new SerializedPage(slice, markers, positionCount, uncompressedSizeInBytes, pros);
+                return new SerializedPage(slice, markers, positionCount, uncompressedSizeInBytes, pros, null);
             }
             catch (IOException e) {
                 throw new UncheckedIOException(e);

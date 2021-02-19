@@ -17,8 +17,12 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.prestosql.spi.Page;
+import io.prestosql.spi.block.Block;
 import org.openjdk.jol.info.ClassLayout;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Properties;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -29,13 +33,15 @@ import static io.hetu.core.transport.execution.buffer.PageCodecMarker.MarkerSet.
 import static java.util.Objects.requireNonNull;
 
 public class SerializedPage
+        implements Closeable
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SerializedPage.class).instanceSize();
-
-    private final Slice slice;
-    private final int positionCount;
-    private final int uncompressedSizeInBytes;
-    private final byte pageCodecMarkers;
+    private final Page page;
+    private Slice slice;
+    private Block[] blocks;
+    private int positionCount;
+    private int uncompressedSizeInBytes;
+    private byte pageCodecMarkers;
     private Properties pageMetadata = new Properties();
 
     @JsonCreator
@@ -51,7 +57,8 @@ public class SerializedPage
                 fromByteValue(pageCodecMarkers),
                 positionCount,
                 uncompressedSizeInBytes,
-                pageMetadata);
+                pageMetadata,
+                null);
     }
 
     public SerializedPage(byte[] sliceArray, byte pageCodecMarkers, int positionCount, int uncompressedSizeInBytes)
@@ -63,7 +70,44 @@ public class SerializedPage
                 uncompressedSizeInBytes);
     }
 
-    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
+    public SerializedPage(byte[] sliceArray, byte pageCodecMarkers, int positionCount, int uncompressedSizeInBytes, Page page)
+    {
+        this(
+                Slices.wrappedBuffer(sliceArray),
+                fromByteValue(pageCodecMarkers),
+                positionCount,
+                uncompressedSizeInBytes,
+                page);
+    }
+
+    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata, Page page)
+    {
+        this.page = page;
+        populate(slice, markers, positionCount, uncompressedSizeInBytes, pageMetadata);
+    }
+
+    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes)
+    {
+        this(slice, markers, positionCount, uncompressedSizeInBytes, null, null);
+    }
+
+    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Page page)
+    {
+        this(slice, markers, positionCount, uncompressedSizeInBytes, null, page);
+    }
+
+    public SerializedPage(Block[] blocks, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata, Page page)
+    {
+        this.blocks = requireNonNull(blocks, "blocks is null");
+        this.positionCount = positionCount;
+        checkArgument(uncompressedSizeInBytes >= 0, "uncompressedSizeInBytes is negative");
+        this.uncompressedSizeInBytes = uncompressedSizeInBytes;
+        this.pageCodecMarkers = requireNonNull(markers, "markers is null").byteValue();
+        this.pageMetadata = pageMetadata == null ? new Properties() : pageMetadata;
+        this.page = page;
+    }
+
+    public void populate(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes, Properties pageMetadata)
     {
         this.slice = requireNonNull(slice, "slice is null");
         this.positionCount = positionCount;
@@ -82,14 +126,31 @@ public class SerializedPage
         }
     }
 
-    public SerializedPage(Slice slice, PageCodecMarker.MarkerSet markers, int positionCount, int uncompressedSizeInBytes)
+    public void acquire()
     {
-        this(slice, markers, positionCount, uncompressedSizeInBytes, null);
+        if (page != null) {
+            // we acquire the page to make sure the block don't get released, this will be released as part of UCX resource free ops
+            page.acquire();
+        }
     }
 
     public int getSizeInBytes()
     {
-        return slice.length();
+        if (slice != null) {
+            return slice.length();
+        }
+        else {
+            int size = 0;
+            for (Block block : blocks) {
+                size += block.getSizeInBytes();
+            }
+            return size;
+        }
+    }
+
+    public Page getRawPageReference()
+    {
+        return page;
     }
 
     @JsonProperty
@@ -100,7 +161,16 @@ public class SerializedPage
 
     public long getRetainedSizeInBytes()
     {
-        return INSTANCE_SIZE + slice.getRetainedSize();
+        if (slice != null) {
+            return INSTANCE_SIZE + slice.getRetainedSize();
+        }
+        else {
+            int size = 0;
+            for (Block block : blocks) {
+                size += block.getRetainedSizeInBytes();
+            }
+            return size;
+        }
     }
 
     @JsonProperty
@@ -112,7 +182,12 @@ public class SerializedPage
     @JsonProperty
     public byte[] getSliceArray()
     {
-        return slice.getBytes();
+        if (slice != null) {
+            return slice.getBytes();
+        }
+        else {
+            return null;
+        }
     }
 
     public Slice getSlice()
@@ -136,6 +211,16 @@ public class SerializedPage
         return ENCRYPTED.isSet(pageCodecMarkers);
     }
 
+    public boolean isOffHeap()
+    {
+        return slice == null && blocks != null && blocks.length != 0;
+    }
+
+    public Block[] getBlocks()
+    {
+        return blocks;
+    }
+
     @JsonProperty
     public Properties getPageMetadata()
     {
@@ -152,5 +237,14 @@ public class SerializedPage
                 .add("uncompressedSizeInBytes", uncompressedSizeInBytes)
                 .add("pageMetadata", pageMetadata)
                 .toString();
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        if (page != null) {
+            page.release();
+        }
     }
 }

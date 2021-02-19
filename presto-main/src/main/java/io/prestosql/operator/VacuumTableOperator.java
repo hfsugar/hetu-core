@@ -242,7 +242,7 @@ public class VacuumTableOperator
     }
 
     @Override
-    public void noMoreSplits()
+    public void setNoMoreSplits()
     {
         if (splits.isEmpty()) {
             finished = true;

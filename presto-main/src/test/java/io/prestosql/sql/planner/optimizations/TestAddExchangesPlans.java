@@ -24,6 +24,7 @@ import io.prestosql.sql.planner.assertions.BasePlanTest;
 import io.prestosql.sql.planner.plan.ExchangeNode;
 import io.prestosql.sql.planner.plan.JoinNode.DistributionType;
 import io.prestosql.testing.LocalQueryRunner;
+import nova.hetu.ShuffleServiceConfig;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
@@ -67,7 +68,8 @@ public class TestAddExchangesPlans
                 .build();
         FeaturesConfig featuresConfig = new FeaturesConfig()
                 .setSpillerSpillPaths("/tmp/test_spill_path");
-        LocalQueryRunner queryRunner = new LocalQueryRunner(session, featuresConfig);
+        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
+        LocalQueryRunner queryRunner = new LocalQueryRunner(session, featuresConfig, shuffleServiceConfig);
         queryRunner.createCatalog("tpch", new TpchConnectorFactory(1), ImmutableMap.of());
         return queryRunner;
     }

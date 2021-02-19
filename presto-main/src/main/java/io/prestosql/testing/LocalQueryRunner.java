@@ -21,6 +21,7 @@ import io.airlift.http.server.HttpServerConfig;
 import io.airlift.http.server.HttpServerInfo;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
+import io.hetu.core.transport.execution.buffer.PagesSerdeFactory;
 import io.prestosql.GroupByHashPageIndexerFactory;
 import io.prestosql.PagesIndexPageSorter;
 import io.prestosql.Session;
@@ -46,31 +47,31 @@ import io.prestosql.cost.StatsCalculator;
 import io.prestosql.cost.TaskCountEstimator;
 import io.prestosql.dynamicfilter.DynamicFilterCacheManager;
 import io.prestosql.eventlistener.EventListenerManager;
-import io.prestosql.execution.CommentTask;
-import io.prestosql.execution.CommitTask;
-import io.prestosql.execution.CreateTableTask;
-import io.prestosql.execution.CreateViewTask;
-import io.prestosql.execution.DataDefinitionTask;
-import io.prestosql.execution.DeallocateTask;
-import io.prestosql.execution.DropTableTask;
-import io.prestosql.execution.DropViewTask;
 import io.prestosql.execution.Lifespan;
 import io.prestosql.execution.NodeTaskMap;
-import io.prestosql.execution.PrepareTask;
 import io.prestosql.execution.QueryManagerConfig;
 import io.prestosql.execution.QueryPreparer;
 import io.prestosql.execution.QueryPreparer.PreparedQuery;
-import io.prestosql.execution.RenameColumnTask;
-import io.prestosql.execution.RenameIndexTask;
-import io.prestosql.execution.RenameTableTask;
-import io.prestosql.execution.ResetSessionTask;
-import io.prestosql.execution.RollbackTask;
 import io.prestosql.execution.ScheduledSplit;
-import io.prestosql.execution.SetPathTask;
-import io.prestosql.execution.SetSessionTask;
-import io.prestosql.execution.StartTransactionTask;
 import io.prestosql.execution.TaskManagerConfig;
 import io.prestosql.execution.TaskSource;
+import io.prestosql.execution.ddl.CommentTask;
+import io.prestosql.execution.ddl.CommitTask;
+import io.prestosql.execution.ddl.CreateTableTask;
+import io.prestosql.execution.ddl.CreateViewTask;
+import io.prestosql.execution.ddl.DataDefinitionTask;
+import io.prestosql.execution.ddl.DeallocateTask;
+import io.prestosql.execution.ddl.DropTableTask;
+import io.prestosql.execution.ddl.DropViewTask;
+import io.prestosql.execution.ddl.PrepareTask;
+import io.prestosql.execution.ddl.RenameColumnTask;
+import io.prestosql.execution.ddl.RenameIndexTask;
+import io.prestosql.execution.ddl.RenameTableTask;
+import io.prestosql.execution.ddl.ResetSessionTask;
+import io.prestosql.execution.ddl.RollbackTask;
+import io.prestosql.execution.ddl.SetPathTask;
+import io.prestosql.execution.ddl.SetSessionTask;
+import io.prestosql.execution.ddl.StartTransactionTask;
 import io.prestosql.execution.resourcegroups.NoOpResourceGroupManager;
 import io.prestosql.execution.scheduler.LegacyNetworkTopology;
 import io.prestosql.execution.scheduler.NodeScheduler;
@@ -184,6 +185,9 @@ import io.prestosql.transaction.TransactionManagerConfig;
 import io.prestosql.util.FinalizerService;
 import io.prestosql.utils.HetuConfig;
 import io.prestosql.version.EmbedVersion;
+import nova.hetu.ShuffleServiceConfig;
+import nova.hetu.shuffle.PageProducer;
+import nova.hetu.shuffle.stream.Stream;
 import org.intellij.lang.annotations.Language;
 import org.weakref.jmx.MBeanExporter;
 import org.weakref.jmx.testing.TestingMBeanServer;
@@ -276,20 +280,20 @@ public class LocalQueryRunner
 
     public LocalQueryRunner(Session defaultSession)
     {
-        this(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), false, false);
+        this(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), false, false);
     }
 
-    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig)
+    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleServiceConfig)
     {
-        this(defaultSession, featuresConfig, new NodeSpillConfig(), false, false);
+        this(defaultSession, featuresConfig, shuffleServiceConfig, new NodeSpillConfig(), false, false);
     }
 
-    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
+    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
     {
-        this(defaultSession, featuresConfig, nodeSpillConfig, withInitialTransaction, alwaysRevokeMemory, 1);
+        this(defaultSession, featuresConfig, shuffleConfig, nodeSpillConfig, withInitialTransaction, alwaysRevokeMemory, 1);
     }
 
-    private LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory, int nodeCountForStats)
+    private LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, ShuffleServiceConfig shuffleConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory, int nodeCountForStats)
     {
         requireNonNull(defaultSession, "defaultSession is null");
         checkArgument(!defaultSession.getTransactionId().isPresent() || !withInitialTransaction, "Already in transaction");
@@ -325,7 +329,7 @@ public class LocalQueryRunner
         this.metadata = new MetadataManager(
                 featuresConfig,
                 // new HetuConfig object passed, if split filtering is needed in the runner, a modified HetuConfig object with filter settings manually set must be used.
-                new SessionPropertyManager(new SystemSessionProperties(new QueryManagerConfig(), taskManagerConfig, new MemoryManagerConfig(), featuresConfig, new HetuConfig())),
+                new SessionPropertyManager(new SystemSessionProperties(new QueryManagerConfig(), taskManagerConfig, new MemoryManagerConfig(), featuresConfig, shuffleConfig, new HetuConfig())),
                 new SchemaPropertyManager(),
                 new TablePropertyManager(),
                 new ColumnPropertyManager(),
@@ -471,12 +475,12 @@ public class LocalQueryRunner
     public static LocalQueryRunner queryRunnerWithInitialTransaction(Session defaultSession)
     {
         checkArgument(!defaultSession.getTransactionId().isPresent(), "Already in transaction!");
-        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), true, false);
+        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), true, false);
     }
 
     public static LocalQueryRunner queryRunnerWithFakeNodeCountForStats(Session defaultSession, int nodeCount)
     {
-        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), false, false, nodeCount);
+        return new LocalQueryRunner(defaultSession, new FeaturesConfig(), new ShuffleServiceConfig(), new NodeSpillConfig(), false, false, nodeCount);
     }
 
     @Override
@@ -779,6 +783,7 @@ public class LocalQueryRunner
                 subplan.getFragment().getPartitioningScheme().getOutputLayout(),
                 plan.getTypes(),
                 subplan.getFragment().getPartitionedSources(),
+                ImmutableList.of(new PageProducer("task-1-0", new PagesSerdeFactory(metadata.getBlockEncodingSerde(), false).createPagesSerde(), Stream.Type.BASIC)),
                 outputFactory);
 
         // generate sources

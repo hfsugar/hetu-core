@@ -27,6 +27,7 @@ import io.prestosql.event.SplitMonitor;
 import io.prestosql.execution.StateMachine.StateChangeListener;
 import io.prestosql.execution.buffer.BufferState;
 import io.prestosql.execution.buffer.OutputBuffer;
+import io.prestosql.execution.buffer.OutputBuffers;
 import io.prestosql.execution.executor.TaskExecutor;
 import io.prestosql.execution.executor.TaskHandle;
 import io.prestosql.operator.Driver;
@@ -39,6 +40,7 @@ import io.prestosql.operator.StageExecutionDescriptor;
 import io.prestosql.operator.TaskContext;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.shuffle.PageProducer;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -70,9 +72,11 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static io.prestosql.SystemSessionProperties.getInitialSplitsPerNode;
 import static io.prestosql.SystemSessionProperties.getMaxDriversPerTask;
 import static io.prestosql.SystemSessionProperties.getSplitConcurrencyAdjustmentInterval;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.ADDING_SPLITS;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.FINISHED;
 import static io.prestosql.execution.SqlTaskExecution.SplitsState.NO_MORE_SPLITS;
+import static io.prestosql.execution.buffer.OutputBuffers.BufferType.PARTITIONED;
 import static io.prestosql.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -112,6 +116,7 @@ public class SqlTaskExecution
     private final TaskStateMachine taskStateMachine;
     private final TaskContext taskContext;
     private final OutputBuffer outputBuffer;
+    private final List<PageProducer> producers;
 
     private final TaskHandle taskHandle;
     private final TaskExecutor taskExecutor;
@@ -145,6 +150,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<PageProducer> producers,
             List<TaskSource> sources,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
@@ -155,6 +161,7 @@ public class SqlTaskExecution
                 taskStateMachine,
                 taskContext,
                 outputBuffer,
+                producers,
                 localExecutionPlan,
                 taskExecutor,
                 queryMonitor,
@@ -172,6 +179,7 @@ public class SqlTaskExecution
             TaskStateMachine taskStateMachine,
             TaskContext taskContext,
             OutputBuffer outputBuffer,
+            List<PageProducer> producers,
             LocalExecutionPlan localExecutionPlan,
             TaskExecutor taskExecutor,
             SplitMonitor splitMonitor,
@@ -181,6 +189,7 @@ public class SqlTaskExecution
         this.taskId = taskStateMachine.getTaskId();
         this.taskContext = requireNonNull(taskContext, "taskContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+        this.producers = requireNonNull(producers, "outputStreams is null");
 
         this.taskExecutor = requireNonNull(taskExecutor, "driverExecutor is null");
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
@@ -245,6 +254,7 @@ public class SqlTaskExecution
             }
 
             outputBuffer.addStateChangeListener(new CheckTaskCompletionOnBufferFinish(SqlTaskExecution.this));
+            producers.forEach(producer -> producer.onClosed(closed -> checkTaskCompletion()));
         }
     }
 
@@ -281,6 +291,27 @@ public class SqlTaskExecution
     public TaskContext getTaskContext()
     {
         return taskContext;
+    }
+
+    public void updatePageProducers(OutputBuffers outputBuffers)
+    {
+        // Partitioned outputBuffers are finalized in task creation
+        if (outputBuffers.getType() == PARTITIONED) {
+            return;
+        }
+
+        for (PageProducer pageProducer : producers) {
+            List<Integer> newOutputBuffers = outputBuffers.getBuffers().keySet().stream().map(Integer::parseInt).collect(Collectors.toList());
+            try {
+                // TODO: keep track of noMoreBuffers here instead of in the stream
+                if (!pageProducer.isClosed()) {
+                    pageProducer.addConsumers(newOutputBuffers, outputBuffers.isNoMoreBufferIds());
+                }
+            }
+            catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public void addSources(List<TaskSource> sources)
@@ -569,6 +600,9 @@ public class SqlTaskExecution
 
                         splitMonitor.splitCompletedEvent(taskId, getDriverStats());
                     }
+                    catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
 
                 @Override
@@ -582,6 +616,9 @@ public class SqlTaskExecution
 
                         // fire failed event with cause
                         splitMonitor.splitFailedEvent(taskId, getDriverStats(), cause);
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
 
@@ -637,15 +674,38 @@ public class SqlTaskExecution
         }
 
         // no more output will be created
-        outputBuffer.setNoMorePages();
+        if (!isShuffleServiceEnabled(taskContext.getSession())) {
+            outputBuffer.setNoMorePages();
+            if (!outputBuffer.isFinished()) {
+                return;
+            }
+        }
+        else {
+            // are there still pages in the output buffer
+            closeProducers(producers);
 
-        // are there still pages in the output buffer
-        if (!outputBuffer.isFinished()) {
-            return;
+            for (PageProducer producer : producers) {
+                // There are still pages buffered in producers, do nothing
+                if (!producer.isClosed()) {
+                    return;
+                }
+            }
         }
 
         // Cool! All done!
         taskStateMachine.finished();
+    }
+
+    private void closeProducers(List<PageProducer> producers)
+    {
+        for (PageProducer producer : producers) {
+            try {
+                producer.close();
+            }
+            catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override

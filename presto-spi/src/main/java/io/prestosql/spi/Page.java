@@ -23,7 +23,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.MissingResourceException;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static io.airlift.slice.SizeOf.sizeOf;
@@ -42,6 +44,7 @@ public class Page
     private final AtomicLong sizeInBytes = new AtomicLong(-1);
     private final AtomicLong retainedSizeInBytes = new AtomicLong(-1);
     private final AtomicLong logicalSizeInBytes = new AtomicLong(-1);
+    private final AtomicInteger refCount = new AtomicInteger(1);
 
     private Properties pageMetadata = new Properties();
 
@@ -117,6 +120,22 @@ public class Page
     public Block getBlock(int channel)
     {
         return blocks[channel];
+    }
+
+    public Block[] getBlocks()
+    {
+        return blocks;
+    }
+
+    public boolean isOffHeap()
+    {
+        // need all blocks are off heap.
+        for (Block block : blocks) {
+            if (!block.isOffHeap()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -369,5 +388,32 @@ public class Page
     public void setPageMetadata(String key, String value)
     {
         pageMetadata.setProperty(key, value);
+    }
+
+    public synchronized void acquire() throws MissingResourceException
+    {
+        if (refCount.getAndIncrement() <= 0) {
+            refCount.decrementAndGet();
+            throw new MissingResourceException("Page has been freed already", this.getClass().toGenericString(), this.toString());
+        }
+    }
+
+    public void release() throws MissingResourceException
+    {
+        int val = refCount.decrementAndGet();
+        if (val == 0) {
+            if (blocks == null) {
+                return;
+            }
+            for (Block block : blocks) {
+                // TODO: check with trans type?
+                if (block.isOffHeap()) {
+                    block.getVec().close();
+                }
+            }
+        }
+        else if (val < 0) {
+            throw new MissingResourceException("Page has been freed already", this.getClass().toGenericString(), this.toString());
+        }
     }
 }

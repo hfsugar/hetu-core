@@ -18,7 +18,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
-import io.prestosql.execution.buffer.OutputBuffers.OutputBufferId;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.Immutable;
@@ -44,8 +43,8 @@ import static java.util.Objects.requireNonNull;
 @ThreadSafe
 class ClientBuffer
 {
-    private final String taskInstanceId;
-    private final OutputBufferId bufferId;
+    private final java.lang.String taskInstanceId;
+    private final String bufferId;
 
     private final AtomicLong rowsAdded = new AtomicLong();
     private final AtomicLong pagesAdded = new AtomicLong();
@@ -69,7 +68,7 @@ class ClientBuffer
     @GuardedBy("this")
     private PendingRead pendingRead;
 
-    public ClientBuffer(String taskInstanceId, OutputBufferId bufferId)
+    public ClientBuffer(java.lang.String taskInstanceId, String bufferId)
     {
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
         this.bufferId = requireNonNull(bufferId, "bufferId is null");
@@ -90,7 +89,7 @@ class ClientBuffer
         // if destroyed the buffered page count must be zero regardless of observation ordering in this lock free code
         int bufferedPages = destroyed ? 0 : Math.max(toIntExact(pagesAdded.get() - sequenceId), 0);
 
-        PageBufferInfo pageBufferInfo = new PageBufferInfo(bufferId.getId(), bufferedPages, bufferedBytes.get(), rowsAdded.get(), pagesAdded.get());
+        PageBufferInfo pageBufferInfo = new PageBufferInfo(Integer.valueOf(bufferId), bufferedPages, bufferedBytes.get(), rowsAdded.get(), pagesAdded.get());
         return new BufferInfo(bufferId, destroyed, bufferedPages, sequenceId, pageBufferInfo);
     }
 
@@ -406,7 +405,7 @@ class ClientBuffer
     }
 
     @Override
-    public String toString()
+    public java.lang.String toString()
     {
         @SuppressWarnings("FieldAccessNotGuarded")
         long sequenceId = currentSequenceId.get();
@@ -424,12 +423,12 @@ class ClientBuffer
     @Immutable
     private static class PendingRead
     {
-        private final String taskInstanceId;
+        private final java.lang.String taskInstanceId;
         private final long sequenceId;
         private final DataSize maxSize;
         private final SettableFuture<BufferResult> resultFuture = SettableFuture.create();
 
-        private PendingRead(String taskInstanceId, long sequenceId, DataSize maxSize)
+        private PendingRead(java.lang.String taskInstanceId, long sequenceId, DataSize maxSize)
         {
             this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
             this.sequenceId = sequenceId;
