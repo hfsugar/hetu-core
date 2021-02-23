@@ -127,7 +127,8 @@ public class ExchangeClientFactory
                     concurrentRequestMultiplier,
                     systemMemoryContext,
                     pagesSerde,
-                    transportType);
+                    transportType,
+                    scheduler);
         }
         return new HttpExchangeClient(
                 maxBufferedBytes,

@@ -14,8 +14,10 @@
  */
 package io.prestosql.operator;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.DataSize;
 import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.prestosql.memory.context.LocalMemoryContext;
@@ -29,9 +31,15 @@ import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.Objects.requireNonNull;
@@ -43,6 +51,7 @@ import static java.util.Objects.requireNonNull;
 public class StreamingExchangeClient
         implements ExchangeClient
 {
+    private static final int MAX_PAGE_OUTPUT_BUFFER_SIZE = 1000;
     private final long bufferCapacity;
     private final int concurrentRequestMultiplier;
 
@@ -53,9 +62,15 @@ public class StreamingExchangeClient
 
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ConcurrentHashMap<URI, PageConsumer> pageConsumers = new ConcurrentHashMap<>();
-    private final Queue<PageConsumer> activePageConsumers = new LinkedList<>();
+    private final Set<PageConsumer> activePageConsumers = new HashSet<>();
+    private final Set<PageConsumer> allPageConsumers = new HashSet<>();
     private final PagesSerde.CommunicationMode defaultTransType;
+    private final List<SettableFuture<?>> blockedCallers = new ArrayList<>();
+    private final ExecutorService executorService = Executors.newFixedThreadPool(1);
+    private LinkedBlockingDeque<Page> pageOutputBuffer = new LinkedBlockingDeque<>();
+    private ScheduledExecutorService scheduler;
     private boolean noMoreLocation;
+    private Throwable failed;
 
     private final LocalMemoryContext systemMemoryContext;
     private final PagesSerde pagesSerde;
@@ -66,7 +81,8 @@ public class StreamingExchangeClient
             int concurrentRequestMultiplier,
             LocalMemoryContext systemMemoryContext,
             PagesSerde pagesSerde,
-            ShuffleServiceConfig.TransportType transportType)
+            ShuffleServiceConfig.TransportType transportType,
+            ScheduledExecutorService scheduler)
     {
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
         this.bufferCapacity = bufferCapacity.toBytes();
@@ -77,6 +93,29 @@ public class StreamingExchangeClient
         this.nPolledPages = 0;
         this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
         this.dynamicRateLimit = false;
+        this.scheduler = scheduler;
+        executorService.execute(() -> {
+                while (!isFinished() && !closed.get()) {
+                    try {
+                        if (pageOutputBuffer.size() < MAX_PAGE_OUTPUT_BUFFER_SIZE) {
+                            pollPageFromPageConsumers();
+                        }
+                        else {
+                            Thread.sleep(2);
+                        }
+                    }
+                    catch (InterruptedException e) {
+                        // ignore interrupted exception
+                    }
+                    catch (Exception e) {
+                        if (failed == null) {
+                            failed = e;
+                        }
+                        break;
+                    }
+                }
+            }
+        );
     }
 
     @Override
@@ -92,7 +131,10 @@ public class StreamingExchangeClient
         if (!pageConsumers.containsKey(location)) {
             PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, false);
             pageConsumers.put(location, pageConsumer);
-            activePageConsumers.offer(pageConsumer);
+            synchronized (activePageConsumers) {
+                allPageConsumers.add(pageConsumer);
+                activePageConsumers.add(pageConsumer);
+            }
         }
     }
 
@@ -107,15 +149,10 @@ public class StreamingExchangeClient
     public synchronized Page pollPage()
     {
         Page page = null;
-        int numConsumers = activePageConsumers.size();
-        while (page == null && numConsumers > 0) {
-            PageConsumer pageConsumer = activePageConsumers.poll();
-            if (!pageConsumer.isEnded()) {
-                page = pageConsumer.poll();
-                activePageConsumers.offer(pageConsumer);
-            }
-            numConsumers--;
+        if (failed != null) {
+            throw new RuntimeException(failed);
         }
+        page = pageOutputBuffer.poll();
 
         if (page == null) {
             return null;
@@ -139,10 +176,41 @@ public class StreamingExchangeClient
         return page;
     }
 
+    private void pollPageFromPageConsumers() throws Exception
+    {
+        boolean needNotifyBlockedCallers = false;
+        if (allPageConsumers.isEmpty()) {
+            notifyBlockedCallers();
+            return;
+        }
+
+        synchronized (activePageConsumers) {
+            for (PageConsumer pageConsumer : activePageConsumers) {
+                if (pageConsumer.isEnded()) {
+                    if (allPageConsumers.contains(pageConsumer)) {
+                        allPageConsumers.remove(pageConsumer);
+                    }
+                    needNotifyBlockedCallers = true;
+                    continue;
+                }
+
+                Page page = pageConsumer.poll();
+                if (page != null) {
+                    pageOutputBuffer.put(page);
+                    needNotifyBlockedCallers = true;
+                }
+            }
+        }
+
+        if (needNotifyBlockedCallers) {
+            notifyBlockedCallers();
+        }
+    }
+
     @Override
     public boolean isFinished()
     {
-        return noMoreLocation && activePageConsumers.isEmpty();
+        return noMoreLocation && allPageConsumers.isEmpty() && pageOutputBuffer.isEmpty();
     }
 
     @Override
@@ -153,9 +221,28 @@ public class StreamingExchangeClient
     }
 
     @Override
-    public ListenableFuture<?> isBlocked()
+    public synchronized ListenableFuture<?> isBlocked()
     {
-        return Futures.immediateFuture(true);
+        if (isClosed() || !pageOutputBuffer.isEmpty()) {
+            return Futures.immediateFuture(true);
+        }
+
+        SettableFuture<?> future = SettableFuture.create();
+        blockedCallers.add(future);
+        return future;
+    }
+
+    private synchronized void notifyBlockedCallers()
+    {
+        if (blockedCallers.isEmpty()) {
+            return;
+        }
+
+        List<SettableFuture<?>> callers = ImmutableList.copyOf(blockedCallers);
+        blockedCallers.clear();
+        for (SettableFuture<?> blockedCaller : callers) {
+            scheduler.execute(() -> blockedCaller.set(null));
+        }
     }
 
     @Override
