@@ -20,7 +20,6 @@ import io.prestosql.spi.Page;
 import nova.hetu.shuffle.inmemory.LocalShuffleClient;
 import nova.hetu.shuffle.rsocket.RsShuffleClient;
 import nova.hetu.shuffle.stream.PageSerializeUtil;
-import nova.hetu.shuffle.ucx.UcxConstant;
 import nova.hetu.shuffle.ucx.UcxShuffleClient;
 
 import java.io.Closeable;
@@ -38,53 +37,19 @@ import static java.util.Objects.requireNonNull;
 public class PageConsumer
         implements Closeable
 {
-    LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
-    PagesSerde serde;
     private final AtomicBoolean shuffleClientFinished = new AtomicBoolean();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
-    private ShuffleClient shuffleClient;
+    LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
+    PagesSerde serde;
+    private final ShuffleClient shuffleClient;
 
     private int rateLimit;
 
-    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde)
-    {
-        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.UCX);
-    }
-
-    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode defaultCommMode, boolean forceCommunication)
-    {
-        // If we are forcing the communication, does not matter whether we are on the same server or not
-        if (forceCommunication) {
-            return new PageConsumer(producerInfo, serde, defaultCommMode);
-        }
-
-        // Compare my ip and location ip and if match, initiate in-memory page shuffling
-        String myIP = null;
-        try {
-            final DatagramSocket socket = new DatagramSocket();
-            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
-            myIP = socket.getLocalAddress().getHostAddress();
-        }
-        catch (SocketException e) {
-            throw new RuntimeException(e);
-        }
-        catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
-
-        boolean local = producerInfo.getHost().equals("127.0.0.1") || producerInfo.getHost().equals("127.0.1.1");
-        if (local || myIP.equals(producerInfo.getHost())) {
-            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY);
-        }
-
-        return new PageConsumer(producerInfo, serde, defaultCommMode);
-    }
-
-    PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode)
+    PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode, int maxPageSizeInBytes, int rateLimit)
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
-        this.rateLimit = UcxConstant.DEFAULT_RATE_LIMIT;
+        this.rateLimit = rateLimit;
 
         ShuffleClientCallbackImpl shuffleClientCallbackImpl = new ShuffleClientCallbackImpl();
 
@@ -97,12 +62,43 @@ public class PageConsumer
                 shuffleClient = new RsShuffleClient();
                 break;
             case UCX:
-                shuffleClient = new UcxShuffleClient();
+                shuffleClient = new UcxShuffleClient(maxPageSizeInBytes);
                 break;
             default:
                 throw new RuntimeException("Unsupported PageConsumer type: " + commMode);
         }
         shuffleClient.getResults(producerInfo.getHost(), producerInfo.getPort(), producerInfo.getProducerId(), pageOutputBuffer, shuffleClientCallbackImpl);
+    }
+
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, int maxPageSizeInBytes, int rateLimit)
+    {
+        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.UCX, maxPageSizeInBytes, rateLimit);
+    }
+
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode defaultCommMode, int maxPageSizeInBytes, int rateLimit, boolean inMemoryEnabled)
+    {
+        // If we are forcing the communication, does not matter whether we are on the same server or not
+        if (!inMemoryEnabled) {
+            return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit);
+        }
+
+        // Compare my ip and location ip and if match, initiate in-memory page shuffling
+        String myIP = null;
+        try {
+            final DatagramSocket socket = new DatagramSocket();
+            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+            myIP = socket.getLocalAddress().getHostAddress();
+        }
+        catch (SocketException | UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+
+        boolean local = producerInfo.getHost().equals("127.0.0.1") || producerInfo.getHost().equals("127.0.1.1");
+        if (local || myIP.equals(producerInfo.getHost())) {
+            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY, maxPageSizeInBytes, rateLimit);
+        }
+
+        return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit);
     }
 
     public Page poll()

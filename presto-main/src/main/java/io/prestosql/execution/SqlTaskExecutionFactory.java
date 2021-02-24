@@ -26,6 +26,7 @@ import io.prestosql.sql.planner.LocalExecutionPlanner;
 import io.prestosql.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import io.prestosql.sql.planner.PlanFragment;
 import io.prestosql.sql.planner.TypeProvider;
+import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 import nova.hetu.shuffle.stream.Stream;
 
@@ -52,6 +53,7 @@ public class SqlTaskExecutionFactory
     private final SplitMonitor splitMonitor;
     private final boolean perOperatorCpuTimerEnabled;
     private final boolean cpuTimerEnabled;
+    private static final ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
     private boolean shuffleService;
 
     public SqlTaskExecutionFactory(
@@ -68,6 +70,7 @@ public class SqlTaskExecutionFactory
         requireNonNull(config, "config is null");
         this.perOperatorCpuTimerEnabled = config.isPerOperatorCpuTimerEnabled();
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
+
     }
 
     public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions, PagesSerde pagesSerde, OutputBuffers outputBuffers)
@@ -125,14 +128,14 @@ public class SqlTaskExecutionFactory
         List<PageProducer> producers = new ArrayList<>();
         if (type == PARTITIONED) {
             outputBuffers.getBuffers().keySet().stream().sorted().forEach(partition -> {
-                producers.add(new PageProducer(getProducerId(taskId.toString(), Integer.parseInt(partition)), pagesSerde, BASIC));
+                producers.add(new PageProducer(getProducerId(taskId.toString(), Integer.parseInt(partition)), pagesSerde, BASIC, shuffleServiceConfig.getMaxPageSizeInBytes()));
             });
         }
         else if (type == BROADCAST) {
-            producers.add(new PageProducer(taskId.toString(), pagesSerde, Stream.Type.BROADCAST));
+            producers.add(new PageProducer(taskId.toString(), pagesSerde, Stream.Type.BROADCAST, shuffleServiceConfig.getMaxPageSizeInBytes()));
         }
         else {
-            producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC));
+            producers.add(new PageProducer(taskId.toString(), pagesSerde, BASIC, shuffleServiceConfig.getMaxPageSizeInBytes()));
         }
 
         return producers;

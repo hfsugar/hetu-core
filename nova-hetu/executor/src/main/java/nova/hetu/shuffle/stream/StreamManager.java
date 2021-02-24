@@ -50,7 +50,7 @@ public class StreamManager
 
     public static Stream get(String streamId, PagesSerde.CommunicationMode commMode)
     {
-        LOG.info("Getting stream for: " + streamId);
+        LOG.debug("Getting stream for: " + streamId);
         Stream stream = streams.get(streamId);
         if (stream != null && commMode != PagesSerde.CommunicationMode.INMEMORY) {
             stream.setCommunicationMode();

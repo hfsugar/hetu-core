@@ -22,8 +22,8 @@ public class UcxConstant
     public static final int INT_SIZE = 4;
     public static final int UCX_MIN_BUFFER_SIZE = 4096;
     public static final int BASE_BUFFER_NB = 4096;
-    public static final int DEFAULT_RATE_LIMIT = 64;
-    public static final float DEFAULT_PREFETCH_COEFF = 0.8f;
+    public static final int UCX_MAX_PRE_ALLOCATE = 1024*1024*128;
+    public static final float DEFAULT_PREFETCH_COEFF = 0.5f;
 
     private UcxConstant() {}
 }

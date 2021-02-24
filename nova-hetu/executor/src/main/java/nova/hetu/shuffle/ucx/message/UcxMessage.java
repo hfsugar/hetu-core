@@ -54,6 +54,7 @@ public abstract class UcxMessage
 
     public enum UcxMessageType
     {
+        PING,
         CLOSE,
         SETUP,
         TAKE,
@@ -63,7 +64,7 @@ public abstract class UcxMessage
     public static class Builder
     {
         private final UcxMemoryPool ucxMemoryPool;
-        private UcxMessageType type;
+        private final UcxMessageType type;
 
         protected Builder(UcxMemoryPool ucxMemoryPool, UcxMessageType type)
         {

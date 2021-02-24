@@ -52,8 +52,11 @@ public class StreamingExchangeClient
         implements ExchangeClient
 {
     private static final int MAX_PAGE_OUTPUT_BUFFER_SIZE = 1000;
+    private final int maxPageSizeInBytes;
+    private final int rateLimit;
     private final long bufferCapacity;
     private final int concurrentRequestMultiplier;
+    private final boolean inMemoryEnabled;
 
     @GuardedBy("this")
     private long bufferRetainedSizeInBytes;
@@ -82,6 +85,9 @@ public class StreamingExchangeClient
             LocalMemoryContext systemMemoryContext,
             PagesSerde pagesSerde,
             ShuffleServiceConfig.TransportType transportType,
+            int maxPageSizeInBytes,
+            int rateLimit,
+            boolean inMemoryEnabled,
             ScheduledExecutorService scheduler)
     {
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -91,30 +97,33 @@ public class StreamingExchangeClient
         this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
         this.bufferRetainedSizeInBytes = 0;
         this.nPolledPages = 0;
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
+        this.rateLimit = rateLimit;
+        this.inMemoryEnabled = inMemoryEnabled;
         this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
         this.dynamicRateLimit = false;
         this.scheduler = scheduler;
         executorService.execute(() -> {
-                while (!isFinished() && !closed.get()) {
-                    try {
-                        if (pageOutputBuffer.size() < MAX_PAGE_OUTPUT_BUFFER_SIZE) {
-                            pollPageFromPageConsumers();
+                    while (!isFinished() && !closed.get()) {
+                        try {
+                            if (pageOutputBuffer.size() < MAX_PAGE_OUTPUT_BUFFER_SIZE) {
+                                pollPageFromPageConsumers();
+                            }
+                            else {
+                                Thread.sleep(2);
+                            }
                         }
-                        else {
-                            Thread.sleep(2);
+                        catch (InterruptedException e) {
+                            // ignore interrupted exception
                         }
-                    }
-                    catch (InterruptedException e) {
-                        // ignore interrupted exception
-                    }
-                    catch (Exception e) {
-                        if (failed == null) {
-                            failed = e;
+                        catch (Exception e) {
+                            if (failed == null) {
+                                failed = e;
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
-            }
         );
     }
 
@@ -129,7 +138,7 @@ public class StreamingExchangeClient
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
         if (!pageConsumers.containsKey(location)) {
-            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, false);
+            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, this.maxPageSizeInBytes, this.rateLimit, this.inMemoryEnabled);
             pageConsumers.put(location, pageConsumer);
             synchronized (activePageConsumers) {
                 allPageConsumers.add(pageConsumer);
@@ -176,7 +185,8 @@ public class StreamingExchangeClient
         return page;
     }
 
-    private void pollPageFromPageConsumers() throws Exception
+    private void pollPageFromPageConsumers()
+            throws Exception
     {
         boolean needNotifyBlockedCallers = false;
         if (allPageConsumers.isEmpty()) {

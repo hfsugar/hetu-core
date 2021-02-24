@@ -24,6 +24,7 @@ import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -431,7 +432,7 @@ public class TestShuffleService
 
     @Test
     void TestPageConsumerStatus()
-            throws InterruptedException
+            throws InterruptedException, IOException
     {
         String taskid = ShuffleServiceTestUtil.getTaskId();
         int bufferid = 0;
@@ -444,7 +445,8 @@ public class TestShuffleService
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
         TimeUnit.MILLISECONDS.sleep(500);
         assertFalse(consumer.isEnded(), "Consumer should not be ended without getting any input");
-
+        consumer.close();
+        assertFalse(consumer.isEnded(), "Consumer should not be ended without getting any input");
         //potential half close situation when producer never published anything, not even EOS?? is this a legal problem?
     }
 
