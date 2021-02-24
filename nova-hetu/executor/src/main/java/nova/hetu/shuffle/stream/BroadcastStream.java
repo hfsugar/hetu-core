@@ -48,14 +48,16 @@ public class BroadcastStream
     private final String id;
     private boolean eos; // endOfStream
     private static final PagesSerde.CommunicationMode commMode = PagesSerde.CommunicationMode.UCX;
+    private final int maxPageSizeInBytes;
 
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
 
-    public BroadcastStream(String id, PagesSerde serde)
+    public BroadcastStream(String id, PagesSerde serde, int maxPageSizeInBytes)
     {
         this.id = id;
         this.serde = serde;
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
     }
 
     @Override
@@ -83,7 +85,7 @@ public class BroadcastStream
     public void write(Page page)
             throws InterruptedException
     {
-        List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
+        List<SerializedPage> serializedPages = splitPage(page, this.maxPageSizeInBytes).stream()
                 .map(p -> PageSerializeUtil.serialize(serde, p, commMode))
                 .collect(Collectors.toList());
 
@@ -105,7 +107,7 @@ public class BroadcastStream
     }
 
     @Override
-    public void addChannels(List<Integer> channelIds, boolean noMoreChannels)
+    public synchronized void addChannels(List<Integer> channelIds, boolean noMoreChannels)
     {
         if (channelsAdded) {
             return;
@@ -182,7 +184,7 @@ public class BroadcastStream
     }
 
     @Override
-    public void destroyChannel(int channelId)
+    public synchronized void destroyChannel(int channelId)
     {
         channels.remove(channelId);
         log.info("Stream " + id + " channel " + channelId + " destroyed");
@@ -198,7 +200,7 @@ public class BroadcastStream
     }
 
     @Override
-    public void close()
+    public synchronized void close()
             throws InterruptedException
     {
         if (!eos) {

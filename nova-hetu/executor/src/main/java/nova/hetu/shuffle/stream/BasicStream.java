@@ -54,11 +54,13 @@ public class BasicStream
     private boolean eos; // endOfStream
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
+    private final int maxPageSizeInBytes;
 
-    public BasicStream(String id, PagesSerde serde)
+    public BasicStream(String id, PagesSerde serde, int maxPageSizeInBytes)
     {
         this.id = id;
         this.serde = serde;
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
         StreamManager.putIfAbsent(id, this);
     }
 
@@ -94,7 +96,7 @@ public class BasicStream
         if (eos) {
             throw new IllegalStateException("Stream has already been closed");
         }
-        for (Page splittedPage : splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES)) {
+        for (Page splittedPage : splitPage(page, this.maxPageSizeInBytes)) {
             SerializedPage serializedPage = PageSerializeUtil.serialize(serde, splittedPage, commMode);
             // we can only acquire the page if its an offHeap page
             serializedPage.acquire();
@@ -103,7 +105,7 @@ public class BasicStream
     }
 
     @Override
-    public void addChannels(List<Integer> channelIds, boolean noMoreChannels)
+    public synchronized void addChannels(List<Integer> channelIds, boolean noMoreChannels)
             throws InterruptedException
     {
         if (channelsAdded) {
@@ -165,7 +167,7 @@ public class BasicStream
     }
 
     @Override
-    public void destroyChannel(int channelId)
+    public synchronized void destroyChannel(int channelId)
     {
         log.info("Stream " + id + " channel " + channelId + " destroyed");
         channels.remove(channelId);

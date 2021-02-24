@@ -22,6 +22,7 @@ import nova.hetu.shuffle.ucx.memory.RegisteredMemory;
 import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
 import nova.hetu.shuffle.ucx.message.UcxCloseMessage;
 import nova.hetu.shuffle.ucx.message.UcxPageMessage;
+import nova.hetu.shuffle.ucx.message.UcxPingMessage;
 import nova.hetu.shuffle.ucx.message.UcxSetupMessage;
 import nova.hetu.shuffle.ucx.message.UcxTakeMessage;
 import org.apache.log4j.Logger;
@@ -129,6 +130,7 @@ public class UcxConnection
                 getMemoryPool().put(recvBuffer);
                 log.error("Client connected to server failed.");
                 super.onError(ucsStatus, errorMsg);
+                log.error("Failed client connect - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
         worker.progressRequest(request);
@@ -154,11 +156,11 @@ public class UcxConnection
 
     public void requestNbPages(LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue, UcxMemoryPool ucxPageMemoryPool, String producerId, int id, int msgId, int rateLimit, int numProcessed)
     {
+        requestPages(producerId, id, rateLimit, numProcessed);
         for (int i = 0; i < rateLimit; i++) {
             SettableFuture<SerializedPage> pageFuture = queuePageRequest(ucxPageMemoryPool, id, msgId + i);
             futureQueue.offer(pageFuture);
         }
-        requestPages(producerId, id, rateLimit, numProcessed);
     }
 
     private UcxMemoryPool getMemoryPool()
@@ -224,9 +226,11 @@ public class UcxConnection
                     // free remote data buffer.
                     remoteKey.close();
                     super.onError(ucsStatus, errorMsg);
+                    log.error("Failed Read Blocks - status " + ucsStatus + " Error : " + errorMsg);
                 }
             });
         }
+        endpoint.flushNonBlocking(null);
     }
 
     private void readPage(UcxMemoryPool ucxPageMemoryPool, long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
@@ -262,8 +266,10 @@ public class UcxConnection
                 // free remote data buffer.
                 remoteKey.close();
                 super.onError(ucsStatus, errorMsg);
+                log.error("Failed Read Page - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
+        endpoint.flushNonBlocking(null);
     }
 
     private SettableFuture<SerializedPage> queuePageRequest(UcxMemoryPool ucxPageMemoryPool, int id, int i)
@@ -303,6 +309,7 @@ public class UcxConnection
                 future.setException(null);
                 getMemoryPool().put(pageBuffer);
                 super.onError(ucsStatus, errorMsg);
+                log.error("Failed Queue Page Request - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
         return future;
@@ -331,8 +338,10 @@ public class UcxConnection
             {
                 getMemoryPool().put(buffer);
                 super.onError(ucsStatus, errorMsg);
+                log.error("Failed request pages - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
+        endpoint.flushNonBlocking(null);
     }
 
     public void sendDone(String producerId, int id)
@@ -356,13 +365,49 @@ public class UcxConnection
             {
                 getMemoryPool().put(buffer);
                 super.onError(ucsStatus, errorMsg);
+                log.error("Failed Done - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
+        endpoint.flushNonBlocking(null);
+    }
+
+    public void sendPing(String producerId, int id)
+    {
+        RegisteredMemory buffer = new UcxPingMessage.Builder(this.getMemoryPool())
+                .setProducerId(producerId)
+                .setId(id)
+                .build();
+
+        endpoint.sendTaggedNonBlocking(buffer.getBuffer(), new UcxCallback()
+        {
+            @Override
+            public void onSuccess(UcpRequest request)
+            {
+                getMemoryPool().put(buffer);
+                super.onSuccess(request);
+                log.debug("Sending PING success");
+            }
+
+            @Override
+            public void onError(int ucsStatus, String errorMsg)
+            {
+                getMemoryPool().put(buffer);
+                super.onError(ucsStatus, errorMsg);
+                log.error("Failed Ping - status " + ucsStatus + " Error : " + errorMsg);
+            }
+        });
+        endpoint.flushNonBlocking(null);
     }
 
     public UcpContext getContext()
     {
         return context;
+    }
+
+    public void flush()
+    {
+        worker.progress();
+        endpoint.flushNonBlocking(null);
     }
 
     private class Page

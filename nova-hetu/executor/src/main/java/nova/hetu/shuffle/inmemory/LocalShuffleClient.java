@@ -59,13 +59,13 @@ public class LocalShuffleClient
                     if (page == EOS) {
                         stream.destroy();
                         shuffleClientCallback.clientFinished();
-                        log.info("Local shuffle client is done");
+                        log.debug("Local shuffle client is done");
                         return;
                     }
                     else {
                         pageOutputBuffer.put(page);
                     }
-                    log.info(page);
+                    log.debug(page);
                 }
                 catch (Exception e) {
                     shuffleClientCallback.clientFailed(e);

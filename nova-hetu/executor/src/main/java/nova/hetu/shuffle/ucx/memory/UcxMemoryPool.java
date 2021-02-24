@@ -108,7 +108,7 @@ public class UcxMemoryPool
         }
     }
 
-    public void preAlocate(int numBuffers, int size)
+    public void preAllocate(int numBuffers, int size)
     {
         AllocatorStack stack = new AllocatorStack(size);
         allocStackMap.put(size, stack);
