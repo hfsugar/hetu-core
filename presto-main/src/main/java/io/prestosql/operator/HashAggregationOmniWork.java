@@ -62,8 +62,7 @@ public final class HashAggregationOmniWork<O>
         for (int i = 0; i < channelCount; i++) {
             inputData[i] = page.getBlock(i).getValues();
         }
-//        LongVec
-//
+
         int rowNum = page.getPositionCount();
 
         outTypes = new VecType[] {VecType.LONG, VecType.LONG, VecType.LONG, VecType.LONG};

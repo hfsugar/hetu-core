@@ -347,7 +347,6 @@ public class LongInputStreamV2
                 used = 0;
                 readValues();
             }
-
             int chunkSize = min(numLiterals - used, items);
             for (int i = 0; i < chunkSize; i++) {
                 longVec.set(offset + i, literals[used + i]);
