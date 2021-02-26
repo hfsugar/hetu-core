@@ -22,15 +22,13 @@ import org.apache.log4j.Logger;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static nova.hetu.shuffle.stream.Constants.EOS;
-import static nova.hetu.shuffle.stream.Constants.MAX_QUEUE_SIZE;
 import static nova.hetu.shuffle.stream.PageSplitterUtil.splitPage;
 
 /**
@@ -44,7 +42,7 @@ public class BasicStream
 {
     private static final Logger log = Logger.getLogger(BasicStream.class);
 
-    private final BlockingQueue<SerializedPage> queue = new ArrayBlockingQueue<>(MAX_QUEUE_SIZE /** shuffle.grpc.buffer_size_in_item */);
+    private final BlockingQueue<SerializedPage> queue = new LinkedBlockingQueue<>();
     private final Set<Integer> addedChannels = new HashSet<>();
     private final Set<Integer> channels = new HashSet<>();
 
@@ -131,7 +129,6 @@ public class BasicStream
                 if (addedChannels.contains(channelId)) {
                     continue;
                 }
-
                 String streamId = id + "-" + channelId;
                 StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
                 channels.add(channelId);
@@ -162,7 +159,7 @@ public class BasicStream
     @Override
     public void destroy()
     {
-        log.info("Stream " + id + " destroyed");
+        log.debug("Stream " + id + " destroyed");
         StreamManager.remove(id);
         if (streamDestroyHandler != null) {
             streamDestroyHandler.accept(true);

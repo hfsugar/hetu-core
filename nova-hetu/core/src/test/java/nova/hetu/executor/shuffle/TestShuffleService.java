@@ -59,7 +59,7 @@ public class TestShuffleService
         shuffleServer.shutdown();
     }
 
-    @Test
+//    @Test
     public void TestSingleConsumerQueueNoProduderClose()
             throws Exception
     {
@@ -167,7 +167,7 @@ public class TestShuffleService
 
         //ensure all results received
         for (int i = 0; i < 10; i++) {
-            assertEquals(i, result[i]);
+            assertEquals(result[i], i);
         }
         assertEquals(true, consumer.isEnded());
     }

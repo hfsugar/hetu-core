@@ -29,6 +29,12 @@ public class UcxSetupMessage
     // | ucpWorkerAddressSize(4B) | ucpWorkerAddress |
     private final ByteBuffer ucpWorkerAddress;
 
+    @Override
+    public int getMaxMessageSize()
+    {
+        return INT_SIZE + MAX_WORKER_INFO_SIZE ;
+    }
+
     public UcxSetupMessage(ByteBuffer data)
     {
         super(data);
@@ -61,7 +67,8 @@ public class UcxSetupMessage
         public RegisteredMemory build()
         {
             // | ucpWorkerAddressSize(4B) | ucpWorkerAddress |
-            RegisteredMemory memory = build(INT_SIZE + ucpWorkerAddress.capacity());
+            int bufferSize = INT_SIZE + ucpWorkerAddress.capacity();
+            RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(ucpWorkerAddress.capacity());
             buffer.put(ucpWorkerAddress);

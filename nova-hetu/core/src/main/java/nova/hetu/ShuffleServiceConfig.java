@@ -22,12 +22,12 @@ import java.net.UnknownHostException;
 public class ShuffleServiceConfig
 {
     private boolean enabled = true;
-    private boolean inMemoryEnabled = true;
+    private boolean inMemoryEnabled = false;
     private boolean zeroCopyEnabled = true;
     private String host;
-    private int rateLimit = 16;
+    private int rateLimit = 64;
     private int port = 16544;
-    private int maxPageSizeInBytes = 1024*1024*16;
+    private int maxPageSizeInBytes = 1024*1024;
     private TransportType transportType = TransportType.UCX;
 
     public enum TransportType

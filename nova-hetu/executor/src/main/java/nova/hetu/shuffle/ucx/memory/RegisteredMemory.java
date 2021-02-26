@@ -15,29 +15,35 @@
 package nova.hetu.shuffle.ucx.memory;
 
 import org.apache.log4j.Logger;
+import org.openucx.jucx.UcxUtils;
 import org.openucx.jucx.ucp.UcpMemory;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class RegisteredMemory
+        implements Closeable
 {
     private static final Logger logger = Logger.getLogger(RegisteredMemory.class);
 
     private final AtomicInteger refcount;
     private final UcpMemory memory;
     private final ByteBuffer buffer;
+    private final UcxMemoryPool ucxMemoryPool;
 
-    RegisteredMemory(AtomicInteger refcount, UcpMemory memory, ByteBuffer buffer)
+    RegisteredMemory(UcxMemoryPool ucxMemoryPool, AtomicInteger refcount, UcpMemory memory, ByteBuffer buffer)
     {
         this.refcount = refcount;
         this.memory = memory;
         this.buffer = buffer;
+        this.ucxMemoryPool = ucxMemoryPool;
     }
 
     public ByteBuffer getBuffer()
     {
-        return buffer;
+        return this.buffer;
     }
 
     AtomicInteger getRefCount()
@@ -53,5 +59,23 @@ public class RegisteredMemory
         if (memory != null && memory.getNativeId() != null) {
             memory.deregister();
         }
+    }
+
+    public ByteBuffer getRemoteKeyBuffer()
+    {
+        return memory.getRemoteKeyBuffer();
+    }
+
+    public long getAddress()
+    {
+        return UcxUtils.getAddress(buffer);
+    }
+
+    @Override
+    public void close()
+            throws IOException
+    {
+        this.buffer.clear();
+        ucxMemoryPool.put(this);
     }
 }

@@ -31,7 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static nova.hetu.shuffle.stream.Constants.EOS;
 import static nova.hetu.shuffle.stream.Constants.MAX_QUEUE_SIZE;
 import static nova.hetu.shuffle.stream.PageSplitterUtil.splitPage;
@@ -41,7 +40,7 @@ public class BroadcastStream
 {
     private static final Logger log = Logger.getLogger(BroadcastStream.class);
 
-    private final BlockingQueue<SerializedPage> pendingPages = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
+    private final BlockingQueue<SerializedPage> pendingPages = new LinkedBlockingQueue<>();
     private final Set<Integer> addedChannels = new HashSet<>();
     private final Map<Integer, BlockingQueue<SerializedPage>> channels = new ConcurrentHashMap<>();
 
@@ -78,7 +77,7 @@ public class BroadcastStream
         if (channel == null) {
             throw new RuntimeException("Channel doesn't exist, stream id " + id + ", channel " + channelId);
         }
-        log.info("Stream " + id + " take channel " + channelId);
+        log.trace("Stream " + id + " take channel " + channelId);
         return channel.take();
     }
 
@@ -179,7 +178,7 @@ public class BroadcastStream
     @Override
     public void destroy()
     {
-        log.info("Stream " + id + " destroyed");
+        log.debug("Stream " + id + " destroyed");
         StreamManager.remove(id);
         if (streamDestroyHandler != null) {
             streamDestroyHandler.accept(true);

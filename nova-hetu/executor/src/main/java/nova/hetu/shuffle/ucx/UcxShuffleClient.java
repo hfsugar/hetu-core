@@ -20,8 +20,11 @@ import nova.hetu.shuffle.ShuffleClient;
 import nova.hetu.shuffle.ShuffleClientCallback;
 import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
 import org.apache.log4j.Logger;
+import org.openucx.jucx.ucp.UcpRemoteKey;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -32,7 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
-import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_PRE_ALLOCATE;
 
 public class UcxShuffleClient
         implements ShuffleClient
@@ -74,6 +76,7 @@ public class UcxShuffleClient
         private final LinkedBlockingQueue<SerializedPage> pageOutputBuffer;
         private final AtomicBoolean closed;
         private final int maxPageSizeInBytes;
+        private final ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys = new ConcurrentHashMap();
         private int rateLimit;
         private int msgId;
         private int numPagesBeforePrefetch;
@@ -102,19 +105,13 @@ public class UcxShuffleClient
                 shuffleClientCallback.clientFailed(e);
                 return;
             }
-            UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), UcxConstant.UCX_MIN_BUFFER_SIZE);
+            UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), rateLimit * maxPageSizeInBytes, maxPageSizeInBytes);
+            ucxPageMemoryPool.preAllocate(rateLimit, maxPageSizeInBytes);
             SettableFuture<SerializedPage> pendingFuture = null;
             LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue = new LinkedBlockingQueue<>();
             int numProcessedPages = 0;
-            int preAllocate = rateLimit;
-            if (rateLimit*maxPageSizeInBytes > UCX_MAX_PRE_ALLOCATE) {
-                preAllocate = Math.floorDiv(UCX_MAX_PRE_ALLOCATE , maxPageSizeInBytes);
-                if (preAllocate == 0) {
-                    preAllocate = 1;
-                }
-            }
-            ucxPageMemoryPool.preAllocate(preAllocate, maxPageSizeInBytes);
-            connection.requestNbPages(futureQueue, ucxPageMemoryPool, producerId, id, msgId, rateLimit, 0);
+            int toFlush = 0;
+            connection.requestNbPages(futureQueue, ucxPageMemoryPool, remoteKeys, producerId, id, msgId, rateLimit, 0);
             int lastRateLimit = rateLimit;
             this.msgId = this.msgId + rateLimit;
             while (!futureQueue.isEmpty() || !closed.get()) {
@@ -137,7 +134,8 @@ public class UcxShuffleClient
                         }
                         rateLimit = shuffleClientCallback.updateRateLimit();
                     }
-                    connection.requestNbPages(futureQueue, ucxPageMemoryPool, producerId, id, msgId, rateLimit, numPagesBeforePrefetch);
+                    connection.requestNbPages(futureQueue, ucxPageMemoryPool, remoteKeys, producerId, id, msgId, rateLimit, toFlush);
+                    toFlush = 0;
                     this.msgId = this.msgId + rateLimit;
                 }
                 SettableFuture<SerializedPage> pageFuture = futureQueue.remove();
@@ -146,15 +144,14 @@ public class UcxShuffleClient
                     SerializedPage page = null;
                     while (page == null && !closed.get()) {
                         try {
-                            page = pageFuture.get(100, TimeUnit.MILLISECONDS);
+                            page = pageFuture.get(5, TimeUnit.SECONDS);
                         }
                         catch (TimeoutException ignored) {
-                            log.warn(producerId + " Timing out");
                             connection.sendPing(producerId, id);
                         }
                     }
                     if (page == null) {
-                        log.debug("Page not found and Client got closed for " + producerId);
+                        log.warn("Page not found and Client got closed for " + producerId);
                         pendingFuture = pageFuture;
                         shuffleClientCallback.clientFinished();
                         break;
@@ -162,6 +159,7 @@ public class UcxShuffleClient
                     if (page != EOS) {
                         // TODO : monitor the page output buffer to adapt the ratelimit
                         pageOutputBuffer.put(page);
+                        toFlush++;
                     }
                     else {
                         // Got EoS
@@ -207,6 +205,9 @@ public class UcxShuffleClient
                 connection.sendDone(producerId, id);
             }
             ucxPageMemoryPool.close();
+            for (Map.Entry<Integer, UcpRemoteKey> entry : remoteKeys.entrySet()) {
+                entry.getValue().close();
+            }
             log.info(producerId + " GET PAGES DONE.");
         }
     }
