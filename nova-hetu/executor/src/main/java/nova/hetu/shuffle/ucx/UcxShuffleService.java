@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
+import static nova.hetu.shuffle.ucx.UcxConstant.BASE_BUFFER_SIZE;
 
 public class UcxShuffleService
         implements Runnable, Closeable
@@ -63,9 +64,13 @@ public class UcxShuffleService
     private final UcxMemoryPool ucxMemoryPool;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final boolean zeroCopyEnabled;
+    private final int maxPageSizeInBytes;
+    private final int rateLimit;
 
-    public UcxShuffleService(UcpContext context, UcxMemoryPool ucxMemoryPool, ByteBuffer setupMessageBuffer, ExecutorService serverExecutor, boolean zeroCopyEnabled)
+    public UcxShuffleService(UcpContext context, UcxMemoryPool ucxMemoryPool, ByteBuffer setupMessageBuffer, ExecutorService serverExecutor, boolean zeroCopyEnabled, int maxPageSizeInBytes, int rateLimit)
     {
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
+        this.rateLimit = rateLimit;
         UcxSetupMessage metadata = new UcxSetupMessage(setupMessageBuffer);
 
         this.worker = context.newWorker(new UcpWorkerParams().requestThreadSafety());
@@ -119,7 +124,7 @@ public class UcxShuffleService
                 // queue write request to specific stream
                 UcxTakeMessage take = new UcxTakeMessage(buffer);
                 UcxStream stream = getOrCreate(take.getProducerId(), take.getId());
-                log.debug("Server handle " + take);
+                log.trace("Server handle " + take);
                 stream.enqueue(take.getRateLimit(), take.getNumProcessed());
                 break;
             case CLOSE:
@@ -199,6 +204,7 @@ public class UcxShuffleService
         private final AtomicInteger queued = new AtomicInteger(0);
         private final LinkedBlockingQueue<Closeable> resources = new LinkedBlockingQueue<>();
         private final AtomicBoolean streamClosed = new AtomicBoolean(false);
+        private final UcxMemoryPool pagePool;
         private Stream stream;
         private int sendId;
 
@@ -208,6 +214,8 @@ public class UcxShuffleService
             this.id = id;
             this.stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
             this.sendId = 0;
+            this.pagePool = new UcxMemoryPool(context, rateLimit * maxPageSizeInBytes, maxPageSizeInBytes);
+            pagePool.preAllocate(rateLimit, maxPageSizeInBytes);
         }
 
         public void enqueue(int nbRequests, int numProcessed)
@@ -279,25 +287,23 @@ public class UcxShuffleService
                     log.error("Failed Send EoS - status " + ucsStatus + " Error : " + errorMsg);
                 }
             });
-            endpoint.flushNonBlocking(null);
         }
 
         private RegisteredMemory onHeapMemory(long tag, SerializedPage page)
         {
             byte[] slice = page.getSliceArray();
-            ByteBuffer pageBuffer = ByteBuffer.allocateDirect(slice.length);
-            // will free by client when client UcpRemoteKey.close()
-            UcpMemory pageMemory = context.registerMemory(pageBuffer);
-            pageBuffer.put(slice);
-            pageBuffer.clear();
+            RegisteredMemory pageMemory = this.pagePool.get(slice.length);
+            pageMemory.getBuffer().put(slice);
+            pageMemory.getBuffer().clear();
             resources.add(pageMemory);
 
             UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
                     pageMemory.getAddress(),
-                    pageMemory.getLength(),
+                    slice.length,
                     page.getPositionCount(),
                     pageMemory.getRemoteKeyBuffer(),
-                    pageBuffer.hashCode());
+                    0);
+//                    pageMemory.getBuffer().hashCode());
 
             UcxPageMessage.Builder builder = new UcxPageMessage.Builder(ucxMemoryPool)
                     .addBlockMetadata(blockMetadata)
@@ -347,6 +353,7 @@ public class UcxShuffleService
         {
             // we register the memory and send the msg
             RegisteredMemory buffer;
+            // FIXME ... we need to only transfer if we don't exceed the message size
             if (page.isOffHeap() && zeroCopyEnabled) {
                 buffer = offHeapMemory(tag, page);
             }
@@ -378,9 +385,9 @@ public class UcxShuffleService
         {
             for (int i = 0; i < numProcessed; ++i) {
                 try {
-                    resources.take().close();
+                    resources.remove().close();
                 }
-                catch (IOException | InterruptedException e) {
+                catch (IOException e) {
                     log.error("release resource failed. " + e);
                 }
             }
@@ -441,6 +448,7 @@ public class UcxShuffleService
             streamClosed.set(true);
             resetResource();
             allStreams.remove(id);
+            pagePool.close();
         }
     }
 }

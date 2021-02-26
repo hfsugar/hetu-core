@@ -32,6 +32,12 @@ public class UcxTakeMessage
     private final int numProcessed;
     private final String producerId;
 
+    @Override
+    public int getMaxMessageSize()
+    {
+        return INT_SIZE * 4 + MAX_PRODUCER_ID_SIZE;
+    }
+
     public UcxTakeMessage(ByteBuffer data)
     {
         super(data);
@@ -61,6 +67,19 @@ public class UcxTakeMessage
     public String getProducerId()
     {
         return producerId;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "TAKE message:{" +
+                "id:" +
+                id +
+                " producerId:" +
+                producerId +
+                " rateLimit:" +
+                rateLimit +
+                "}";
     }
 
     public static class Builder
@@ -103,7 +122,8 @@ public class UcxTakeMessage
         public RegisteredMemory build()
         {
             int producerIdSize = producerId.getBytes(CHARSET).length;
-            RegisteredMemory memory = build(INT_SIZE * 4 + producerIdSize);
+            int bufferSize = INT_SIZE * 4 + producerIdSize;
+            RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(id);
             buffer.putInt(rateLimit);
@@ -113,18 +133,5 @@ public class UcxTakeMessage
             buffer.clear();
             return memory;
         }
-    }
-
-    @Override
-    public String toString()
-    {
-        return "TAKE message:{" +
-                "id:" +
-                id +
-                " producerId:" +
-                producerId +
-                " rateLimit:" +
-                rateLimit +
-                "}";
     }
 }

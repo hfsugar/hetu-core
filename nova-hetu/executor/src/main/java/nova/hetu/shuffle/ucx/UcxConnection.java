@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -109,6 +110,7 @@ public class UcxConnection
                 }
             }
         }, factory.getExecutor());
+        log.info("Buffer xxxx " + recvBuffer.getBuffer().capacity());
         UcpRequest request = worker.recvTaggedNonBlocking(recvBuffer.getBuffer(), new UcxCallback()
         {
             @Override
@@ -154,11 +156,11 @@ public class UcxConnection
         }
     }
 
-    public void requestNbPages(LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue, UcxMemoryPool ucxPageMemoryPool, String producerId, int id, int msgId, int rateLimit, int numProcessed)
+    public void requestNbPages(LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue, UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, String producerId, int id, int msgId, int rateLimit, int numProcessed)
     {
         requestPages(producerId, id, rateLimit, numProcessed);
         for (int i = 0; i < rateLimit; i++) {
-            SettableFuture<SerializedPage> pageFuture = queuePageRequest(ucxPageMemoryPool, id, msgId + i);
+            SettableFuture<SerializedPage> pageFuture = queuePageRequest(ucxPageMemoryPool, remoteKeys, id, msgId + i);
             futureQueue.offer(pageFuture);
         }
     }
@@ -233,29 +235,42 @@ public class UcxConnection
         endpoint.flushNonBlocking(null);
     }
 
-    private void readPage(UcxMemoryPool ucxPageMemoryPool, long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
+    private UcpRemoteKey getRemoteKey(ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, ByteBuffer remoteKeyByteBuffer)
+    {
+        int hash = remoteKeyByteBuffer.hashCode();
+        UcpRemoteKey remoteKey = remoteKeys.get(hash);
+        if (remoteKey != null) {
+            return remoteKey;
+        }
+        remoteKey = endpoint.unpackRemoteKey(remoteKeyByteBuffer);
+        remoteKeys.put(hash, remoteKey);
+        return remoteKey;
+    }
+
+    private void readPage(UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
     {
         UcxPageMessage.BlockMetadata blockMetadata = pageMetadata.getBlockMetadata(0);
 
         long remoteAddress = blockMetadata.getDataAddress();
         long remoteSize = blockMetadata.getDataSize();
-        UcpRemoteKey remoteKey = endpoint.unpackRemoteKey(blockMetadata.getDataRkey());
+        UcpRemoteKey remoteKey = getRemoteKey(remoteKeys, blockMetadata.getDataRkey());
 
         RegisteredMemory pageBuffer = ucxPageMemoryPool.get((int) remoteSize);
-        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer.getBuffer(), new UcxCallback()
+        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer.getBuffer(),  new UcxCallback()
         {
             @Override
             public void onSuccess(UcpRequest request)
             {
-                byte[] bytes = new byte[(int) remoteSize];
-                pageBuffer.getBuffer().get(bytes);
-                log.trace("Client read page: [" + tag + "] " + pageMetadata.toString() + " hashCode:" + pageBuffer.hashCode());
-                SerializedPage page = new SerializedPage(bytes, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes());
-                future.set(page);
-                ucxPageMemoryPool.put(pageBuffer);
-                // free remote data buffer.
-                remoteKey.close();
-                super.onSuccess(request);
+                factory.getExecutor().execute(() -> {
+                    byte[] bytes = new byte[(int) remoteSize];
+                    pageBuffer.getBuffer().get(bytes);
+                    log.trace("Client read page: [" + tag + "] " + pageMetadata.toString() + " hashCode:" + pageBuffer.hashCode());
+                    SerializedPage page = new SerializedPage(bytes, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes());
+                    future.set(page);
+                    ucxPageMemoryPool.put(pageBuffer);
+                    // free remote data buffer.
+                    super.onSuccess(request);
+                });
             }
 
             @Override
@@ -264,15 +279,13 @@ public class UcxConnection
                 future.setException(null);
                 ucxPageMemoryPool.put(pageBuffer);
                 // free remote data buffer.
-                remoteKey.close();
                 super.onError(ucsStatus, errorMsg);
                 log.error("Failed Read Page - status " + ucsStatus + " Error : " + errorMsg);
             }
         });
-        endpoint.flushNonBlocking(null);
     }
 
-    private SettableFuture<SerializedPage> queuePageRequest(UcxMemoryPool ucxPageMemoryPool, int id, int i)
+    private SettableFuture<SerializedPage> queuePageRequest(UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, int id, int i)
     {
         SettableFuture<SerializedPage> future = SettableFuture.create();
         long tmp = id;
@@ -283,24 +296,26 @@ public class UcxConnection
             @Override
             public void onSuccess(UcpRequest request)
             {
-                UcxPageMessage pageMetadata = new UcxPageMessage(pageBuffer.getBuffer());
-                int uncompressedSizeInBytes = pageMetadata.getUncompressedSizeInBytes();
-                if (uncompressedSizeInBytes == 0) {
-                    //EoS
-                    log.trace("Client receive EOS: [" + tag + "] " + pageMetadata.toString());
-                    future.set(EOS);
-                }
-                else {
-                    if (pageMetadata.isOffHeap()) {
-                        readBlocks(tag, pageMetadata, future);
+                factory.getExecutor().execute(() -> {
+                    UcxPageMessage pageMetadata = new UcxPageMessage(pageBuffer.getBuffer());
+                    int uncompressedSizeInBytes = pageMetadata.getUncompressedSizeInBytes();
+                    if (uncompressedSizeInBytes == 0) {
+                        //EoS
+                        log.trace("Client receive EOS: [" + tag + "] " + pageMetadata.toString());
+                        future.set(EOS);
                     }
                     else {
-                        readPage(ucxPageMemoryPool, tag, pageMetadata, future);
+                        if (pageMetadata.isOffHeap()) {
+                            readBlocks(tag, pageMetadata, future);
+                        }
+                        else {
+                            readPage(ucxPageMemoryPool, remoteKeys, tag, pageMetadata, future);
+                        }
                     }
-                }
 
-                getMemoryPool().put(pageBuffer);
-                super.onSuccess(request);
+                    getMemoryPool().put(pageBuffer);
+                    super.onSuccess(request);
+                });
             }
 
             @Override

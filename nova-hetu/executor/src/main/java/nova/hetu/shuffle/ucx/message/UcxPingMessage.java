@@ -30,6 +30,12 @@ public class UcxPingMessage
     private final int id;
     private final String producerId;
 
+    @Override
+    public int getMaxMessageSize()
+    {
+        return INT_SIZE * 2 + MAX_PRODUCER_ID_SIZE;
+    }
+
     public UcxPingMessage(ByteBuffer data)
     {
         super(data);
@@ -86,7 +92,8 @@ public class UcxPingMessage
         public RegisteredMemory build()
         {
             int producerIdSize = producerId.getBytes(CHARSET).length;
-            RegisteredMemory memory = build(INT_SIZE * 2 + producerIdSize);
+            int bufferSize = INT_SIZE * 2 + producerIdSize;
+            RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(id);
             buffer.putInt(producerIdSize);

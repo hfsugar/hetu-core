@@ -17,21 +17,27 @@ package nova.hetu.shuffle.ucx.message;
 
 import nova.hetu.shuffle.ucx.memory.RegisteredMemory;
 import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
+import org.apache.log4j.Logger;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import static nova.hetu.shuffle.ucx.UcxConstant.INT_SIZE;
-import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MIN_BUFFER_SIZE;
+import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_MSG_SIZE;
 
 public abstract class UcxMessage
 {
-    public static final int MAX_MESSAGE_SIZE = UCX_MIN_BUFFER_SIZE;
+    public static final int MAX_PRODUCER_ID_SIZE = 128;
+    public static final int MAX_WORKER_INFO_SIZE = 128;
+    public static final int MAX_MESSAGE_SIZE = UCX_MAX_MSG_SIZE;
     public static final Charset CHARSET = StandardCharsets.UTF_8;
     public static final int MESSAGE_HEAD_SIZE = 4;
+    protected static final Logger log = Logger.getLogger(UcxMessage.class);
 
-    UcxMessageType type;
+    protected UcxMessageType type;
+
+    public abstract int getMaxMessageSize();
 
     public UcxMessage(ByteBuffer data)
     {
@@ -63,8 +69,8 @@ public abstract class UcxMessage
 
     public static class Builder
     {
+        protected final UcxMessageType type;
         private final UcxMemoryPool ucxMemoryPool;
-        private final UcxMessageType type;
 
         protected Builder(UcxMemoryPool ucxMemoryPool, UcxMessageType type)
         {
