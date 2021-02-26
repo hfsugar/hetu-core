@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -51,7 +52,7 @@ public class BasicStream
     private final String id;
     private PagesSerde.CommunicationMode commMode = PagesSerde.CommunicationMode.INMEMORY;
 
-    private boolean eos; // endOfStream
+    private AtomicBoolean eos = new AtomicBoolean(false); // endOfStream
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
     private final int maxPageSizeInBytes;
@@ -93,7 +94,7 @@ public class BasicStream
     public void write(Page page)
             throws InterruptedException
     {
-        if (eos) {
+        if (eos.get()) {
             throw new IllegalStateException("Stream has already been closed");
         }
         for (Page splittedPage : splitPage(page, this.maxPageSizeInBytes)) {
@@ -105,7 +106,7 @@ public class BasicStream
     }
 
     @Override
-    public synchronized void addChannels(List<Integer> channelIds, boolean noMoreChannels)
+    public void addChannels(List<Integer> channelIds, boolean noMoreChannels)
             throws InterruptedException
     {
         if (channelsAdded) {
@@ -125,18 +126,20 @@ public class BasicStream
             return;
         }
 
-        for (Integer channelId : channelIds) {
-            if (addedChannels.contains(channelId)) {
-                continue;
-            }
+        synchronized (channels) {
+            for (Integer channelId : channelIds) {
+                if (addedChannels.contains(channelId)) {
+                    continue;
+                }
 
-            String streamId = id + "-" + channelId;
-            StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
-            channels.add(channelId);
-            addedChannels.add(channelId);
-            log.info("Stream " + id + " add channel " + channelId);
-            if (eos) {
-                queue.put(EOS);
+                String streamId = id + "-" + channelId;
+                StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
+                channels.add(channelId);
+                addedChannels.add(channelId);
+                log.info("Stream " + id + " add channel " + channelId);
+                if (eos.get()) {
+                    queue.put(EOS);
+                }
             }
         }
 
@@ -153,7 +156,7 @@ public class BasicStream
         if (!addedChannels.isEmpty() && !channelsAdded) {
             return false;
         }
-        return eos && queue.isEmpty();
+        return eos.get() && queue.isEmpty();
     }
 
     @Override
@@ -167,10 +170,12 @@ public class BasicStream
     }
 
     @Override
-    public synchronized void destroyChannel(int channelId)
+    public void destroyChannel(int channelId)
     {
         log.info("Stream " + id + " channel " + channelId + " destroyed");
-        channels.remove(channelId);
+        synchronized (channels) {
+            channels.remove(channelId);
+        }
         if (channels.isEmpty() && channelsAdded) {
             destroy();
         }
@@ -183,20 +188,23 @@ public class BasicStream
     }
 
     @Override
-    public synchronized void close()
+    public void close()
             throws InterruptedException
     {
-        if (!eos) {
-            log.info("Closing Stream " + id);
-            eos = true;
-            if (addedChannels.isEmpty()) {
-                log.info("Adding EOS to " + id);
-                queue.put(EOS);
-                return;
-            }
-            for (int i = 0; i < channels.size(); i++) {
-                log.info("Adding EOS to " + id + "-" + i);
-                queue.put(EOS);
+        if (!eos.get()) {
+            if (eos.compareAndSet(false, true)) {
+                log.info("Closing Stream " + id);
+                if (addedChannels.isEmpty()) {
+                    log.info("Adding EOS to " + id);
+                    queue.put(EOS);
+                    return;
+                }
+                synchronized (channels) {
+                    for (int i = 0; i < channels.size(); i++) {
+                        log.info("Adding EOS to " + id + "-" + i);
+                        queue.put(EOS);
+                    }
+                }
             }
         }
     }
