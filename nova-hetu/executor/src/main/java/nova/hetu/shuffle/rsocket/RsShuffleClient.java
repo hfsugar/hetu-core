@@ -33,11 +33,18 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Supplier;
 
 public class RsShuffleClient
         implements ShuffleClient
 {
     private static Logger log = Logger.getLogger(RsShuffleClient.class);
+    private final Supplier<?> pollPageSupplier;
+
+    public RsShuffleClient(Supplier<?> pollPageSupplier)
+    {
+        this.pollPageSupplier = pollPageSupplier;
+    }
 
     public void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback)
     {
@@ -53,14 +60,17 @@ public class RsShuffleClient
                 .doOnComplete(() -> {
                     RsShuffleClient.log.info("*******************Closing flux for result " + producerId);
                     shuffleClientCallback.clientFinished();
+                    pollPageSupplier.get();
                 })
                 .doOnCancel(() -> {
                     RsShuffleClient.log.info(producerId + " CANCELLED");
                     shuffleClientCallback.clientFinished();
+                    pollPageSupplier.get();
                 })
                 .doOnError(e -> {
                     String error = producerId + " Error getting pages: " + e.getMessage();
                     shuffleClientCallback.clientFailed(new Throwable(error));
+                    pollPageSupplier.get();
                 });
 
         flux.subscribe(payload -> {
@@ -78,13 +88,16 @@ public class RsShuffleClient
                 RsShuffleClient.log.error(producerId + "Error receiving page for " +
                         " with marker: " + marker + ", count " + count +
                         ", size " + size + ": " + e.getMessage());
+                pollPageSupplier.get();
                 return;
             }
 
             try {
                 pageOutputBuffer.put(page);
+                pollPageSupplier.get();
             }
             catch (InterruptedException e) {
+                pollPageSupplier.get();
                 throw new RuntimeException(e);
             }
         });
@@ -93,7 +106,7 @@ public class RsShuffleClient
     public static void main(String[] args)
             throws InterruptedException, ExecutionException
     {
-        new RsShuffleClient().getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>(), null);
+        new RsShuffleClient(() -> true).getResults("127.0.0.1", 7878, "producerId", new LinkedBlockingQueue<>(), null);
     }
 
     @Override

@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
 
@@ -45,10 +46,12 @@ public class UcxShuffleClient
     private static final AtomicInteger idCounter = new AtomicInteger(0);
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final int maxPageSizeInBytes;
+    private final Supplier<?> pollPageSupplier;
 
-    public UcxShuffleClient(int maxPageSizeInBytes)
+    public UcxShuffleClient(int maxPageSizeInBytes, Supplier<?> pollPageSupplier)
     {
         this.maxPageSizeInBytes = maxPageSizeInBytes;
+        this.pollPageSupplier = pollPageSupplier;
     }
 
     @Override
@@ -56,7 +59,7 @@ public class UcxShuffleClient
     {
         UcxConnection connection = factory.getOrCreateConnection(host, port);
 
-        Fetch fetch = new Fetch(pageOutputBuffer, connection, producerId, shuffleClientCallback, closed, maxPageSizeInBytes);
+        Fetch fetch = new Fetch(pageOutputBuffer, connection, producerId, shuffleClientCallback, closed, maxPageSizeInBytes, pollPageSupplier);
         executor.submit(fetch::getPages);
     }
 
@@ -80,8 +83,9 @@ public class UcxShuffleClient
         private int rateLimit;
         private int msgId;
         private int numPagesBeforePrefetch;
+        private final Supplier<?> pollPageSupplier;
 
-        public Fetch(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, UcxConnection connection, String producerId, ShuffleClientCallback shuffleClientCallback, AtomicBoolean closed, int maxPageSizeInBytes)
+        public Fetch(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, UcxConnection connection, String producerId, ShuffleClientCallback shuffleClientCallback, AtomicBoolean closed, int maxPageSizeInBytes, Supplier<?> pollPageSupplier)
         {
             this.msgId = 0;
             this.connection = connection;
@@ -93,6 +97,7 @@ public class UcxShuffleClient
             this.numPagesBeforePrefetch = (int) (rateLimit * UcxConstant.DEFAULT_PREFETCH_COEFF);
             this.closed = closed;
             this.maxPageSizeInBytes = maxPageSizeInBytes;
+            this.pollPageSupplier = pollPageSupplier;
         }
 
         public void getPages()
@@ -103,6 +108,7 @@ public class UcxShuffleClient
             }
             catch (Exception e) {
                 shuffleClientCallback.clientFailed(e);
+                pollPageSupplier.get();
                 return;
             }
             UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), rateLimit * maxPageSizeInBytes, maxPageSizeInBytes);
@@ -130,6 +136,7 @@ public class UcxShuffleClient
                         }
                         catch (InterruptedException e) {
                             shuffleClientCallback.clientFailed(e);
+                            pollPageSupplier.get();
                             break;
                         }
                         rateLimit = shuffleClientCallback.updateRateLimit();
@@ -154,21 +161,25 @@ public class UcxShuffleClient
                         log.warn("Page not found and Client got closed for " + producerId);
                         pendingFuture = pageFuture;
                         shuffleClientCallback.clientFinished();
+                        pollPageSupplier.get();
                         break;
                     }
                     if (page != EOS) {
                         // TODO : monitor the page output buffer to adapt the ratelimit
                         pageOutputBuffer.put(page);
+                        pollPageSupplier.get();
                         toFlush++;
                     }
                     else {
                         // Got EoS
                         shuffleClientCallback.clientFinished();
+                        pollPageSupplier.get();
                         break;
                     }
                 }
                 catch (InterruptedException | ExecutionException e) {
                     shuffleClientCallback.clientFailed(e);
+                    pollPageSupplier.get();
                     break;
                 }
             }
@@ -176,6 +187,7 @@ public class UcxShuffleClient
             if (pendingFuture != null) {
                 // we got a close early, and we need to force a cleanup
                 connection.sendDone(producerId, id);
+                pollPageSupplier.get();
                 sentDone = true;
             }
             while (!futureQueue.isEmpty()) {
@@ -203,6 +215,7 @@ public class UcxShuffleClient
             if (!sentDone) {
                 // we finished cleanly and simply close properly at the end
                 connection.sendDone(producerId, id);
+                pollPageSupplier.get();
             }
             ucxPageMemoryPool.close();
             for (Map.Entry<Integer, UcpRemoteKey> entry : remoteKeys.entrySet()) {

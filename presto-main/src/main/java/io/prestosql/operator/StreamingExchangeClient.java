@@ -36,11 +36,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
@@ -51,7 +50,6 @@ import static java.util.Objects.requireNonNull;
 public class StreamingExchangeClient
         implements ExchangeClient
 {
-    private static final int MAX_PAGE_OUTPUT_BUFFER_SIZE = 1000;
     private final int maxPageSizeInBytes;
     private final int rateLimit;
     private final long bufferCapacity;
@@ -69,7 +67,7 @@ public class StreamingExchangeClient
     private final Set<PageConsumer> allPageConsumers = new HashSet<>();
     private final PagesSerde.CommunicationMode defaultTransType;
     private final List<SettableFuture<?>> blockedCallers = new ArrayList<>();
-    private final ExecutorService executorService = Executors.newFixedThreadPool(1);
+    private final AtomicBoolean needReleaseAllBlockedCallers = new AtomicBoolean(false);
     private LinkedBlockingDeque<Page> pageOutputBuffer = new LinkedBlockingDeque<>();
     private ScheduledExecutorService scheduler;
     private boolean noMoreLocation;
@@ -103,28 +101,6 @@ public class StreamingExchangeClient
         this.defaultTransType = (transportType == ShuffleServiceConfig.TransportType.UCX ? PagesSerde.CommunicationMode.UCX : PagesSerde.CommunicationMode.RSOCKET);
         this.dynamicRateLimit = false;
         this.scheduler = scheduler;
-        executorService.execute(() -> {
-                    while (!isFinished() && !closed.get()) {
-                        try {
-                            if (pageOutputBuffer.size() < MAX_PAGE_OUTPUT_BUFFER_SIZE) {
-                                pollPageFromPageConsumers();
-                            }
-                            else {
-                                Thread.sleep(2);
-                            }
-                        }
-                        catch (InterruptedException e) {
-                            // ignore interrupted exception
-                        }
-                        catch (Exception e) {
-                            if (failed == null) {
-                                failed = e;
-                            }
-                            break;
-                        }
-                    }
-                }
-        );
     }
 
     @Override
@@ -138,7 +114,7 @@ public class StreamingExchangeClient
     {
         //location URI format: /v1/task/{taskId}/results/{bufferId}/{token} --> ["", "v1", "task",{taskid}, "result", {bufferid}]
         if (!pageConsumers.containsKey(location)) {
-            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, this.maxPageSizeInBytes, this.rateLimit, this.inMemoryEnabled);
+            PageConsumer pageConsumer = PageConsumer.create(new ProducerInfo(location), pagesSerde, defaultTransType, this.maxPageSizeInBytes, this.rateLimit, this.inMemoryEnabled, notifyExchangeClientPollPage());
             pageConsumers.put(location, pageConsumer);
             synchronized (activePageConsumers) {
                 allPageConsumers.add(pageConsumer);
@@ -185,13 +161,12 @@ public class StreamingExchangeClient
         return page;
     }
 
-    private void pollPageFromPageConsumers()
-            throws Exception
+    private boolean pollPageFromPageConsumers()
     {
         boolean needNotifyBlockedCallers = false;
         if (allPageConsumers.isEmpty()) {
             notifyBlockedCallers();
-            return;
+            return true;
         }
 
         synchronized (activePageConsumers) {
@@ -201,12 +176,20 @@ public class StreamingExchangeClient
                         allPageConsumers.remove(pageConsumer);
                     }
                     needNotifyBlockedCallers = true;
+                    if (allPageConsumers.isEmpty()) {
+                        needReleaseAllBlockedCallers.set(true);
+                    }
                     continue;
                 }
 
                 Page page = pageConsumer.poll();
                 if (page != null) {
-                    pageOutputBuffer.put(page);
+                    try {
+                        pageOutputBuffer.put(page);
+                    }
+                    catch (Exception e) {
+                        failed = e;
+                    }
                     needNotifyBlockedCallers = true;
                 }
             }
@@ -215,6 +198,7 @@ public class StreamingExchangeClient
         if (needNotifyBlockedCallers) {
             notifyBlockedCallers();
         }
+        return true;
     }
 
     @Override
@@ -237,19 +221,36 @@ public class StreamingExchangeClient
             return Futures.immediateFuture(true);
         }
 
+        if (needReleaseAllBlockedCallers.get()) {
+            notifyBlockedCallers();
+            return Futures.immediateFuture(true);
+        }
+
         SettableFuture<?> future = SettableFuture.create();
-        blockedCallers.add(future);
+        synchronized (blockedCallers) {
+            blockedCallers.add(future);
+        }
         return future;
     }
 
-    private synchronized void notifyBlockedCallers()
+    public Supplier<?> notifyExchangeClientPollPage()
     {
-        if (blockedCallers.isEmpty()) {
-            return;
+        return () -> pollPageFromPageConsumers();
+    }
+
+    private void notifyBlockedCallers()
+    {
+        List<SettableFuture<?>> callers = null;
+        synchronized (blockedCallers) {
+            if (!blockedCallers.isEmpty()) {
+                callers = ImmutableList.copyOf(blockedCallers);
+                blockedCallers.clear();
+            }
         }
 
-        List<SettableFuture<?>> callers = ImmutableList.copyOf(blockedCallers);
-        blockedCallers.clear();
+        if (callers == null) {
+            return;
+        }
         for (SettableFuture<?> blockedCaller : callers) {
             scheduler.execute(() -> blockedCaller.set(null));
         }

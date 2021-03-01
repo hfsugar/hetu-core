@@ -31,6 +31,7 @@ import java.net.UnknownHostException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
@@ -45,7 +46,7 @@ public class PageConsumer
 
     private int rateLimit;
 
-    PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode, int maxPageSizeInBytes, int rateLimit)
+    PageConsumer(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode commMode, int maxPageSizeInBytes, int rateLimit, Supplier<?> pollPageSupplier)
     {
         this.pageOutputBuffer = new LinkedBlockingQueue<>();
         this.serde = serde;
@@ -55,14 +56,14 @@ public class PageConsumer
 
         switch (commMode) {
             case INMEMORY:
-                shuffleClient = new LocalShuffleClient();
+                shuffleClient = new LocalShuffleClient(pollPageSupplier);
                 break;
             case RSOCKET:
                 // TODO: pass in an event listener to handler success and failure events
-                shuffleClient = new RsShuffleClient();
+                shuffleClient = new RsShuffleClient(pollPageSupplier);
                 break;
             case UCX:
-                shuffleClient = new UcxShuffleClient(maxPageSizeInBytes);
+                shuffleClient = new UcxShuffleClient(maxPageSizeInBytes, pollPageSupplier);
                 break;
             default:
                 throw new RuntimeException("Unsupported PageConsumer type: " + commMode);
@@ -72,14 +73,14 @@ public class PageConsumer
 
     public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, int maxPageSizeInBytes, int rateLimit)
     {
-        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.UCX, maxPageSizeInBytes, rateLimit);
+        return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.UCX, maxPageSizeInBytes, rateLimit, () -> true);
     }
 
-    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode defaultCommMode, int maxPageSizeInBytes, int rateLimit, boolean inMemoryEnabled)
+    public static PageConsumer create(ProducerInfo producerInfo, PagesSerde serde, PagesSerde.CommunicationMode defaultCommMode, int maxPageSizeInBytes, int rateLimit, boolean inMemoryEnabled, Supplier<?> pollPageSupplier)
     {
         // If we are forcing the communication, does not matter whether we are on the same server or not
         if (!inMemoryEnabled) {
-            return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit);
+            return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit, pollPageSupplier);
         }
 
         // Compare my ip and location ip and if match, initiate in-memory page shuffling
@@ -95,10 +96,10 @@ public class PageConsumer
 
         boolean local = producerInfo.getHost().equals("127.0.0.1") || producerInfo.getHost().equals("127.0.1.1");
         if (local || myIP.equals(producerInfo.getHost())) {
-            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY, maxPageSizeInBytes, rateLimit);
+            return new PageConsumer(producerInfo, serde, PagesSerde.CommunicationMode.INMEMORY, maxPageSizeInBytes, rateLimit, pollPageSupplier);
         }
 
-        return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit);
+        return new PageConsumer(producerInfo, serde, defaultCommMode, maxPageSizeInBytes, rateLimit, pollPageSupplier);
     }
 
     public Page poll()

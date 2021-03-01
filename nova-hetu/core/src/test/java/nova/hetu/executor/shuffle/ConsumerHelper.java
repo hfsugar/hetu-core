@@ -28,7 +28,7 @@ public class ConsumerHelper
 
     public ConsumerHelper(String host, int port, String taskid, int bufferid, PagesSerde serde, long[] result, PagesSerde.CommunicationMode defaultCommMode)
     {
-        this.consumer = PageConsumer.create(new ProducerInfo(host, port, taskid + "-" + bufferid), serde, defaultCommMode, ShuffleServiceTestUtil.MAX_PAGE_SIZE_IN_BYTES, ShuffleServiceTestUtil.RATE_LIMIT, true);
+        this.consumer = PageConsumer.create(new ProducerInfo(host, port, taskid + "-" + bufferid), serde, defaultCommMode, ShuffleServiceTestUtil.MAX_PAGE_SIZE_IN_BYTES, ShuffleServiceTestUtil.RATE_LIMIT, true, () -> true);
         this.result = result;
         this.uuid = UUID.randomUUID().toString();
         System.out.println(uuid + " the comsumer uuid ");
