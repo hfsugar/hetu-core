@@ -110,7 +110,6 @@ public class UcxConnection
                 }
             }
         }, factory.getExecutor());
-        log.info("Buffer xxxx " + recvBuffer.getBuffer().capacity());
         UcpRequest request = worker.recvTaggedNonBlocking(recvBuffer.getBuffer(), new UcxCallback()
         {
             @Override

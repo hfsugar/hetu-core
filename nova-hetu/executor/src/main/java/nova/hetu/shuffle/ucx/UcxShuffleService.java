@@ -41,6 +41,8 @@ import org.openucx.jucx.ucp.UcpWorkerParams;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -49,7 +51,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
-import static nova.hetu.shuffle.ucx.UcxConstant.BASE_BUFFER_SIZE;
+import static nova.hetu.shuffle.ucx.UcxConstant.MIN_OFF_HEAP_TRANSFER;
+import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_MSG_SIZE;
+import static nova.hetu.shuffle.ucx.message.UcxMessage.MAX_RKEY_SIZE;
 
 public class UcxShuffleService
         implements Runnable, Closeable
@@ -326,24 +330,24 @@ public class UcxShuffleService
                     .setUncompressedSizeInBytes(page.getUncompressedSizeInBytes());
 
             Block[] blocks = page.getBlocks();
-            resources.add(page);
+            OffHeapResource res = new OffHeapResource(page);
             for (int blockId = 0; blockId < blocks.length; blockId++) {
                 Vec vec = blocks[blockId].getVec();
                 ByteBuffer blockBuffer = vec.getData();
                 // will free by client when client UcpRemoteKey.close()
                 UcpMemory blockMemory = context.registerMemory(blockBuffer);
-                resources.add(blockMemory);
-
+                res.add(blockMemory);
                 UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
                         blockMemory.getAddress(),
                         blockMemory.getLength(),
                         blocks[blockId].getPositionCount(),
                         blockMemory.getRemoteKeyBuffer(),
-                        blockBuffer.hashCode());
+                        0);
+//                        blockBuffer.hashCode());
 
                 builder.addBlockMetadata(blockMetadata);
             }
-
+            resources.add(res);
             log.trace("Server send off heap page: [" + tag + "]" + builder.toString());
 
             return builder.build();
@@ -353,8 +357,7 @@ public class UcxShuffleService
         {
             // we register the memory and send the msg
             RegisteredMemory buffer;
-            // FIXME ... we need to only transfer if we don't exceed the message size
-            if (page.isOffHeap() && zeroCopyEnabled) {
+            if (page.isOffHeap()) {
                 buffer = offHeapMemory(tag, page);
             }
             else {
@@ -449,6 +452,35 @@ public class UcxShuffleService
             resetResource();
             allStreams.remove(id);
             pagePool.close();
+        }
+
+        private class OffHeapResource
+                implements Closeable
+        {
+
+            private SerializedPage page;
+
+            public OffHeapResource(SerializedPage page)
+            {
+                this.page = page;
+            }
+
+            private Queue<UcpMemory> blockMemories = new LinkedList();
+
+            @Override
+            public void close()
+                    throws IOException
+            {
+                for (UcpMemory memory : blockMemories) {
+                    memory.close();
+                }
+                page.close();
+            }
+
+            public void add(UcpMemory blockMemory)
+            {
+                blockMemories.add(blockMemory);
+            }
         }
     }
 }

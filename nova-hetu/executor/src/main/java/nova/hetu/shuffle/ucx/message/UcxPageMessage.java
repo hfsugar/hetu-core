@@ -36,7 +36,6 @@ public class UcxPageMessage
     // Each block in page metadata has next layout:
     // | dataAddress(8B) | dataSize(8B) | dataPositionCount(4B) | dataHashCode(4B) | dataRkeySize(4B) |dataRkey(dataRkeySize Bytes) |
 
-    private static final int MAX_RKEY_SIZE = 150;
     private static final int PAGE_METADATA_HEADER_SIZE = INT_SIZE * 3 + BYTE_SIZE * 2;
     private static final int BLOCK_METADATA_SIZE = LONG_SIZE * 2 + INT_SIZE + MAX_RKEY_SIZE;
     private static final Logger log = Logger.getLogger(UcxPageMessage.class);

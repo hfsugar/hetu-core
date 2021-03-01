@@ -20,14 +20,25 @@ import io.hetu.core.transport.execution.buffer.PagesSerde;
 import io.hetu.core.transport.execution.buffer.SerializedPage;
 import io.prestosql.spi.Page;
 
+import static nova.hetu.shuffle.ucx.UcxConstant.MIN_OFF_HEAP_TRANSFER;
+import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_MSG_SIZE;
+import static nova.hetu.shuffle.ucx.message.UcxMessage.MAX_RKEY_SIZE;
+
 public class PageSerializeUtil
 {
     private PageSerializeUtil() {}
 
     public static SerializedPage serialize(PagesSerde serde, Page page, PagesSerde.CommunicationMode commMode)
     {
+        // page is off heap and off heap enabled
         if (page.isOffHeap() && commMode == PagesSerde.CommunicationMode.UCX) {
-            return new SerializedPage(page.getBlocks(), PageCodecMarker.MarkerSet.empty(), page.getPositionCount(), (int) page.getSizeInBytes(), page.getPageMetadata(), page);
+            // we are of a decent size
+            if (page.getSizeInBytes() >= MIN_OFF_HEAP_TRANSFER) {
+                // we do not have too many chunks
+                if (page.getBlocks().length * MAX_RKEY_SIZE < UCX_MAX_MSG_SIZE) {
+                    return new SerializedPage(page.getBlocks(), PageCodecMarker.MarkerSet.empty(), page.getPositionCount(), (int) page.getSizeInBytes(), page.getPageMetadata(), page);
+                }
+            }
         }
         return serde.serialize(page);
     }

@@ -28,6 +28,8 @@ import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_MSG_SIZE;
 
 public abstract class UcxMessage
 {
+
+    public static final int MAX_RKEY_SIZE = 128;
     public static final int MAX_PRODUCER_ID_SIZE = 128;
     public static final int MAX_WORKER_INFO_SIZE = 128;
     public static final int MAX_MESSAGE_SIZE = UCX_MAX_MSG_SIZE;
