@@ -149,12 +149,14 @@ public class TestSqlTaskExecution
             // See #testComplex for all the bahaviors that are tested. Not all of them apply here.
             TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
             final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
+            List<PageProducer> producers = new ArrayList<>();
+            producers.add(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC, 1024*1024*16));
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     1,
                     TABLE_SCAN_NODE_ID,
                     outputBuffer,
                     Function.identity(),
-                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC, 1024*1024*16));
+                    producers);
             LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
                     ImmutableList.of(new DriverFactory(
                             0,
@@ -373,12 +375,14 @@ public class TestSqlTaskExecution
                     values3NodeId,
                     ImmutableList.of(new Page(createStringsBlock("x", "y", "multiplier3"))));
             final PagesSerdeFactory serdeFactory = new PagesSerdeFactory(createTestMetadataManager().getBlockEncodingSerde(), false);
+            List<PageProducer> producers = new ArrayList<>();
+            producers.add(new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC, 1024*1024*16));
             TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
                     4,
                     joinCNodeId,
                     outputBuffer,
                     Function.identity(),
-                    new PageProducer(taskStateMachine.getTaskId().toString() + "-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC, 1024*1024*16));
+                    producers);
             TestingCrossJoinOperatorFactory joinOperatorFactoryA = new TestingCrossJoinOperatorFactory(2, joinANodeId, buildStatesA);
             TestingCrossJoinOperatorFactory joinOperatorFactoryB = new TestingCrossJoinOperatorFactory(102, joinBNodeId, buildStatesB);
             TestingCrossJoinOperatorFactory joinOperatorFactoryC = new TestingCrossJoinOperatorFactory(3, joinCNodeId, buildStatesC);

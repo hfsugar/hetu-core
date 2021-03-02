@@ -159,7 +159,7 @@ public class BasicStream
     @Override
     public void destroy()
     {
-        log.debug("Stream " + id + " destroyed");
+        log.info("Stream " + id + " destroyed");
         StreamManager.remove(id);
         if (streamDestroyHandler != null) {
             streamDestroyHandler.accept(true);

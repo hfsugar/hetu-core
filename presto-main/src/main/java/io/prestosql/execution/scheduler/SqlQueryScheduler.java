@@ -86,6 +86,7 @@ import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.prestosql.SystemSessionProperties.getConcurrentLifespansPerNode;
 import static io.prestosql.SystemSessionProperties.getWriterMinSize;
 import static io.prestosql.SystemSessionProperties.isReuseTableScanEnabled;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.connector.CatalogName.isInternalSystemConnector;
 import static io.prestosql.execution.BasicStageStats.aggregateBasicStageStats;
 import static io.prestosql.execution.SqlStageExecution.createSqlStageExecution;
@@ -290,8 +291,13 @@ public class SqlQueryScheduler
     {
         Set<URI> bufferLocations = tasks.stream()
                 .map(task -> {
-                    URI location = task.getTaskStatus().getSelf();
-                    return uriBuilderFrom(location).port(task.getTaskStatus().getShuffleServicePort()).build();
+                    if (isShuffleServiceEnabled(queryStateMachine.getSession())) {
+                        URI location = task.getTaskStatus().getSelf();
+                        return uriBuilderFrom(location).port(task.getTaskStatus().getShuffleServicePort()).build();
+                    }
+                    else {
+                        return task.getTaskStatus().getSelf();
+                    }
                 })
                 .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
                 .collect(toImmutableSet());

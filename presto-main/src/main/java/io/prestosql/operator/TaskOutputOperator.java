@@ -19,12 +19,12 @@ import io.prestosql.execution.buffer.OutputBuffer;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
 import java.util.function.Function;
 
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static java.util.Objects.requireNonNull;
 
 public class TaskOutputOperator
@@ -34,18 +34,18 @@ public class TaskOutputOperator
             implements OutputFactory
     {
         private final OutputBuffer outputBuffer;
-        private final PageProducer pageProducer;
+        private final List<PageProducer> pageProducers;
 
-        public TaskOutputFactory(OutputBuffer outputBuffer, PageProducer pageProducer)
+        public TaskOutputFactory(OutputBuffer outputBuffer, List<PageProducer> pageProducers)
         {
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.pageProducer = requireNonNull(pageProducer, "outputStreams is null");
+            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
         }
 
         @Override
         public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pageLayoutProcessor, PagesSerdeFactory serdeFactory)
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, pageProducer);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pageLayoutProcessor, pageProducers);
         }
     }
 
@@ -55,23 +55,23 @@ public class TaskOutputOperator
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final OutputBuffer outputBuffer;
-        private final PageProducer pageProducer;
+        private final List<PageProducer> pageProducers;
         private final Function<Page, Page> pagePreprocessor;
 
-        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PageProducer pageProducer)
+        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<PageProducer> pageProducers)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-            this.pageProducer = requireNonNull(pageProducer, "outputStreams is null");
+            this.pageProducers = requireNonNull(pageProducers, "outputStreams is null");
         }
 
         @Override
         public Operator createOperator(DriverContext driverContext)
         {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
-            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, pageProducer);
+            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, pageProducers);
         }
 
         @Override
@@ -82,22 +82,22 @@ public class TaskOutputOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, pageProducer);
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, pageProducers);
         }
     }
 
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
-    private final PageProducer pageProducer;
+    private final List<PageProducer> pageProducers;
     private final Function<Page, Page> pagePreprocessor;
     private boolean finished;
 
-    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PageProducer pageProducer)
+    public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, List<PageProducer> pageProducers)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        this.pageProducer = requireNonNull(pageProducer, "pageProducer is null");
+        this.pageProducers = requireNonNull(pageProducers, "pageProducer is null");
     }
 
     @Override
@@ -141,11 +141,10 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
-        if (shuffleServiceConfig.isEnabled()) {
+        if (isShuffleServiceEnabled(operatorContext.getSession())) {
             //redirect to shuffle service
             try {
-                pageProducer.send(page);
+                pageProducers.get(0).send(page);
             }
             catch (InterruptedException e) {
                 throw new RuntimeException(e);

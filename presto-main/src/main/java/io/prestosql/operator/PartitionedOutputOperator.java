@@ -29,7 +29,6 @@ import io.prestosql.spi.predicate.NullableValue;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.util.Mergeable;
-import nova.hetu.ShuffleServiceConfig;
 import nova.hetu.shuffle.PageProducer;
 
 import java.util.List;
@@ -40,6 +39,7 @@ import java.util.function.Function;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -221,6 +221,7 @@ public class PartitionedOutputOperator
         this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
 
         this.partitionFunction = new PagePartitioner(
+                operatorContext,
                 partitionFunction,
                 partitionChannels,
                 partitionConstants,
@@ -319,8 +320,10 @@ public class PartitionedOutputOperator
         private final AtomicLong rowsAdded = new AtomicLong();
         private final AtomicLong pagesAdded = new AtomicLong();
         private boolean hasAnyRowBeenReplicated;
+        private OperatorContext operatorContext;
 
         public PagePartitioner(
+                OperatorContext operatorContext,
                 PartitionFunction partitionFunction,
                 List<Integer> partitionChannels,
                 List<Optional<NullableValue>> partitionConstants,
@@ -332,6 +335,7 @@ public class PartitionedOutputOperator
                 List<Type> sourceTypes,
                 DataSize maxMemory)
         {
+            this.operatorContext = operatorContext;
             this.partitionFunction = requireNonNull(partitionFunction, "partitionFunction is null");
             this.partitionChannels = requireNonNull(partitionChannels, "partitionChannels is null");
             this.partitionConstants = requireNonNull(partitionConstants, "partitionConstants is null").stream()
@@ -444,8 +448,7 @@ public class PartitionedOutputOperator
                     partitionPageBuilder.reset();
 
                     try {
-                        ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
-                        if (shuffleServiceConfig.isEnabled()) {
+                        if (isShuffleServiceEnabled(operatorContext.getSession())) {
                             pageProducers.get(partition).send(pagePartition);
                         }
                         else {

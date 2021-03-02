@@ -71,6 +71,7 @@ import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.prestosql.SystemSessionProperties.isEnableDynamicFiltering;
 import static io.prestosql.SystemSessionProperties.isReuseTableScanEnabled;
+import static io.prestosql.SystemSessionProperties.isShuffleServiceEnabled;
 import static io.prestosql.failuredetector.FailureDetector.State.GONE;
 import static io.prestosql.operator.ExchangeOperator.REMOTE_CONNECTOR_ID;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -355,9 +356,16 @@ public final class SqlStageExecution
             ImmutableMultimap.Builder<PlanNodeId, Split> newSplits = ImmutableMultimap.builder();
             for (RemoteTask sourceTask : sourceTasks) {
                 URI exchangeLocation = sourceTask.getTaskStatus().getSelf();
-                URI streamLocation = UriBuilder.fromUri(exchangeLocation).port(sourceTask.getTaskStatus().getShuffleServicePort()).build();
-                System.out.println("AddExchangeLocation: Adding streaming location for " + sourceTask.getTaskId().toString() + " : " + streamLocation.toString());
-                newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), streamLocation));
+                System.out.println("................" + isShuffleServiceEnabled(stateMachine.getSession()));
+                if (isShuffleServiceEnabled(stateMachine.getSession())) {
+                    URI streamLocation = UriBuilder.fromUri(exchangeLocation).port(sourceTask.getTaskStatus().getShuffleServicePort()).build();
+                    System.out.println("AddExchangeLocation: Adding streaming location for " + sourceTask.getTaskId().toString() + " : " + streamLocation.toString());
+                    newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), streamLocation));
+                }
+                else {
+                    newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), exchangeLocation));
+                }
+
             }
             task.addSplits(newSplits.build());
         }
@@ -472,9 +480,16 @@ public final class SqlStageExecution
         sourceTasks.forEach((planNodeId, task) -> {
             TaskStatus status = task.getTaskStatus();
             if (status.getState() != TaskState.FINISHED) {
-                URI streamLocation = UriBuilder.fromUri(status.getSelf()).port(status.getShuffleServicePort()).build();
-                System.out.println("ScheduleTask: Adding streaming location for " + task.getTaskId().toString() + " : " + streamLocation.toString());
-                initialSplits.put(planNodeId, createRemoteSplitFor(taskId, streamLocation));
+                System.out.println(".........task......." + isShuffleServiceEnabled(stateMachine.getSession()));
+                if (isShuffleServiceEnabled(stateMachine.getSession())) {
+                    URI streamLocation = UriBuilder.fromUri(status.getSelf()).port(status.getShuffleServicePort()).build();
+                    System.out.println("ScheduleTask: Adding streaming location for " + task.getTaskId().toString() + " : " + streamLocation.toString());
+                    initialSplits.put(planNodeId, createRemoteSplitFor(taskId, streamLocation));
+                }
+                else {
+                    System.out.println("ScheduleTask: Adding streaming location for " + task.getTaskId().toString() + " : " + status.getSelf().toString());
+                    initialSplits.put(planNodeId, createRemoteSplitFor(taskId, status.getSelf()));
+                }
             }
         });
 
