@@ -18,6 +18,7 @@ import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.block.LongArrayBlock;
 import io.prestosql.spi.block.LongArrayBlockBuilder;
 import io.prestosql.spi.block.VariableWidthBlockBuilder;
+import nova.hetu.omnicache.vector.LongVec;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
@@ -35,6 +36,27 @@ public class TestLongArrayBlock
         Slice[] expectedValues = createTestValue(17);
         assertFixedWithValues(expectedValues);
         assertFixedWithValues(alternatingNullValues(expectedValues));
+    }
+
+    @Test
+    public void testArrayOffset()
+    {
+        long[] arr = {0, 1, 2};
+        boolean[] b = {false, false, false};
+        LongVec longVec = new LongVec(3);
+        for (int i = 0; i < 3; i++) {
+            longVec.set(i, i);
+        }
+        LongVec expectedVec = new LongVec(2);
+        for (int i = 0; i < 2; i++) {
+            expectedVec.set(i,i+1);
+        }
+
+        LongVec slice = longVec.slice(1, 3);
+        LongArrayBlock longArrayBlock = new LongArrayBlock(1, 2, b, arr);
+
+        assertEquals(expectedVec,slice);
+        assertEquals(expectedVec,longArrayBlock.getValues());
     }
 
     @Test

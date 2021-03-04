@@ -17,13 +17,9 @@ import io.prestosql.spi.Page;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.DoubleArrayBlock;
 import io.prestosql.spi.block.LongArrayBlock;
-import io.prestosql.spi.type.BigintType;
-import io.prestosql.spi.type.DoubleType;
-import io.prestosql.spi.type.Type;
 import nova.hetu.omnicache.runtime.OmniOpStep;
 import nova.hetu.omnicache.runtime.OmniRuntime;
 import nova.hetu.omnicache.vector.DoubleVec;
-import nova.hetu.omnicache.vector.IntVec;
 import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.Vec;
 import nova.hetu.omnicache.vector.VecType;
@@ -64,11 +60,10 @@ public final class HashAggregationOmniWork<O>
         }
 
         int rowNum = page.getPositionCount();
-
         outTypes = new VecType[] {VecType.LONG, VecType.LONG, VecType.LONG, VecType.LONG};
 
         if (inputData[channelCount - 1] instanceof LongVec) {
-            omniRuntime.execute(compileID.get(0), omniKey, inputData, rowNum, outTypes, OmniOpStep.INTERMEDIATE);
+            omniRuntime.execute(compileID.get(0), omniKey, inputData,rowNum, outTypes, OmniOpStep.INTERMEDIATE);
         }
         else {
             omniRuntime.execute(compileID.get(1), omniKey, inputData, rowNum, outTypes, OmniOpStep.INTERMEDIATE);

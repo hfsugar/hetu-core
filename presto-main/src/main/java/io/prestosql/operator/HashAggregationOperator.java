@@ -32,7 +32,9 @@ import io.prestosql.spiller.SpillerFactory;
 import io.prestosql.sql.gen.JoinCompiler;
 import io.prestosql.sql.planner.plan.AggregationNode.Step;
 import io.prestosql.sql.planner.plan.PlanNodeId;
+import nova.hetu.omnicache.vector.LongVec;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -498,7 +500,6 @@ public class HashAggregationOperator
             closeAggregationBuilder();
             return null;
         }
-
         return outputPages.getResult();
     }
 
