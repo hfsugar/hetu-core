@@ -67,8 +67,8 @@ public class UcxServer
                 .setMtWorkersShared(true));
         resources.push(context);
 
-        ucxMemoryPool = new UcxMemoryPool(context, 4096);
-        ucxMemoryPool.preAlocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.UCX_MIN_BUFFER_SIZE, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        ucxMemoryPool.preAllocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MAX_MSG_SIZE);
         resources.push(ucxMemoryPool);
 
         worker = context.newWorker(new UcpWorkerParams());
@@ -109,7 +109,7 @@ public class UcxServer
                 @Override
                 public void onSuccess(UcpRequest request)
                 {
-                    UcxShuffleService shuffleService = new UcxShuffleService(context, ucxMemoryPool, setupMessageBuffer, serverExecutor);
+                    UcxShuffleService shuffleService = new UcxShuffleService(context, ucxMemoryPool, setupMessageBuffer, serverExecutor, shuffleServiceConfig.isZeroCopyEnabled(), shuffleServiceConfig.getMaxPageSizeInBytes(), shuffleServiceConfig.getRateLimit());
                     serverExecutor.submit(shuffleService);
                 }
 

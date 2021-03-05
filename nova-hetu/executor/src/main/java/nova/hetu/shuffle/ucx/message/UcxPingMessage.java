@@ -21,57 +21,83 @@ import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
 import java.nio.ByteBuffer;
 
 import static nova.hetu.shuffle.ucx.UcxConstant.INT_SIZE;
-import static nova.hetu.shuffle.ucx.message.UcxMessage.UcxMessageType.SETUP;
+import static nova.hetu.shuffle.ucx.message.UcxMessage.UcxMessageType.PING;
 
-public class UcxSetupMessage
+public class UcxPingMessage
         extends UcxMessage
 {
-    // | ucpWorkerAddressSize(4B) | ucpWorkerAddress |
-    private final ByteBuffer ucpWorkerAddress;
+    // | id(4B) | producerIdSize(4B) | producerId(producerIdSize Bytes) |
+    private final int id;
+    private final String producerId;
 
     @Override
     public int getMaxMessageSize()
     {
-        return INT_SIZE + MAX_WORKER_INFO_SIZE ;
+        return INT_SIZE * 2 + MAX_PRODUCER_ID_SIZE;
     }
 
-    public UcxSetupMessage(ByteBuffer data)
+    public UcxPingMessage(ByteBuffer data)
     {
         super(data);
-        int ucpWorkerAddressSize = data.getInt();
-        data.limit(data.position() + ucpWorkerAddressSize);
-        this.ucpWorkerAddress = data.slice();
+        this.id = data.getInt();
+        int producerIdSize = data.getInt();
+        data.limit(data.position() + producerIdSize);
+        this.producerId = CHARSET.decode(data).toString();
     }
 
-    public ByteBuffer getUcpWorkerAddress()
+    public int getId()
     {
-        return ucpWorkerAddress;
+        return id;
+    }
+
+    public String getProducerId()
+    {
+        return producerId;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "PING message:{" +
+                "id:" +
+                id +
+                " producerId:" +
+                producerId +
+                "}";
     }
 
     public static class Builder
             extends UcxMessage.Builder
     {
-        private ByteBuffer ucpWorkerAddress;
+        private int id;
+        private String producerId;
 
         public Builder(UcxMemoryPool ucxMemoryPool)
         {
-            super(ucxMemoryPool, SETUP);
+            super(ucxMemoryPool, PING);
         }
 
-        public Builder setUcpWorkerAddress(ByteBuffer ucpWorkerAddress)
+        public Builder setId(int id)
         {
-            this.ucpWorkerAddress = ucpWorkerAddress;
+            this.id = id;
+            return this;
+        }
+
+        public Builder setProducerId(String producerId)
+        {
+            this.producerId = producerId;
             return this;
         }
 
         public RegisteredMemory build()
         {
-            // | ucpWorkerAddressSize(4B) | ucpWorkerAddress |
-            int bufferSize = INT_SIZE + ucpWorkerAddress.capacity();
+            int producerIdSize = producerId.getBytes(CHARSET).length;
+            int bufferSize = INT_SIZE * 2 + producerIdSize;
             RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
-            buffer.putInt(ucpWorkerAddress.capacity());
-            buffer.put(ucpWorkerAddress);
+            buffer.putInt(id);
+            buffer.putInt(producerIdSize);
+            buffer.put(producerId.getBytes(CHARSET));
             buffer.clear();
             return memory;
         }

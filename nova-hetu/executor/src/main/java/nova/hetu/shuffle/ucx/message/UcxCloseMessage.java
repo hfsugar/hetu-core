@@ -30,6 +30,12 @@ public class UcxCloseMessage
     private final int id;
     private final String producerId;
 
+    @Override
+    public int getMaxMessageSize()
+    {
+        return INT_SIZE * 2 + MAX_PRODUCER_ID_SIZE;
+    }
+
     public UcxCloseMessage(ByteBuffer data)
     {
         super(data);
@@ -47,6 +53,17 @@ public class UcxCloseMessage
     public String getProducerId()
     {
         return producerId;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "CLOSE message:{" +
+                "id:" +
+                id +
+                " producerId:" +
+                producerId +
+                "}";
     }
 
     public static class Builder
@@ -75,7 +92,8 @@ public class UcxCloseMessage
         public RegisteredMemory build()
         {
             int producerIdSize = producerId.getBytes(CHARSET).length;
-            RegisteredMemory memory = build(INT_SIZE * 2 + producerIdSize);
+            int bufferSize = INT_SIZE * 2 + producerIdSize;
+            RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(id);
             buffer.putInt(producerIdSize);
@@ -83,16 +101,5 @@ public class UcxCloseMessage
             buffer.clear();
             return memory;
         }
-    }
-
-    @Override
-    public String toString()
-    {
-        return "CLOSE message:{" +
-                "id:" +
-                id +
-                " producerId:" +
-                producerId +
-                "}";
     }
 }

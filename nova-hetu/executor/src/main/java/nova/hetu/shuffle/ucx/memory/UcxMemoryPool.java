@@ -34,18 +34,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UcxMemoryPool
         implements Closeable
 {
-    private static final int defaultBufferSize = UcxConstant.UCX_MIN_BUFFER_SIZE;
     private static final Logger logger = Logger.getLogger(UcxMemoryPool.class);
     private static final Constructor<?> directBufferConstructor;
     private final ConcurrentHashMap<Integer, AllocatorStack> allocStackMap =
             new ConcurrentHashMap<>();
     private final UcpContext context;
     private final int minBufferSize;
+    private final long minRequestedBufferSize;
+    private long totalAllocated = 0;
 
-    public UcxMemoryPool(UcpContext context, int minBufferSize)
+    public UcxMemoryPool(UcpContext context, int minBufferSize, int minRequestedBufferSize)
     {
         this.context = context;
         this.minBufferSize = minBufferSize;
+        this.minRequestedBufferSize = roundUpToTheNextPowerOf2(minRequestedBufferSize);
     }
 
     private static ByteBuffer getByteBuffer(long address, int length)
@@ -72,11 +74,16 @@ public class UcxMemoryPool
         allocStackMap.clear();
     }
 
+    public long getTotalAllocated()
+    {
+        return totalAllocated;
+    }
+
     private long roundUpToTheNextPowerOf2(long length)
     {
         // Round up length to the nearest power of two, or the minimum block size
-        if (length < minBufferSize) {
-            length = minBufferSize;
+        if (length < minRequestedBufferSize) {
+            length = minRequestedBufferSize;
         }
         else {
             length--;
@@ -95,7 +102,7 @@ public class UcxMemoryPool
         long roundedSize = roundUpToTheNextPowerOf2(size);
         AllocatorStack stack =
                 allocStackMap.computeIfAbsent((int) roundedSize, AllocatorStack::new);
-        RegisteredMemory result = stack.get();
+        RegisteredMemory result = stack.get(this);
         result.getBuffer().position(0).limit(size);
         return result;
     }
@@ -108,11 +115,12 @@ public class UcxMemoryPool
         }
     }
 
-    public void preAlocate(int numBuffers, int size)
+    public void preAllocate(int numBuffers, int size)
     {
-        AllocatorStack stack = new AllocatorStack(size);
-        allocStackMap.put(size, stack);
-        stack.preallocate(numBuffers);
+        long roundedSize = roundUpToTheNextPowerOf2(size);
+        AllocatorStack stack = new AllocatorStack((int) roundedSize);
+        allocStackMap.put((int) roundedSize, stack);
+        stack.preallocate(this, numBuffers);
     }
 
     private class AllocatorStack
@@ -128,25 +136,26 @@ public class UcxMemoryPool
         private AllocatorStack(int length)
         {
             this.length = length;
-            this.minRegistrationSize = defaultBufferSize;
+            this.minRegistrationSize = minBufferSize;
         }
 
-        private RegisteredMemory get()
+        private RegisteredMemory get(UcxMemoryPool ucxMemoryPool)
         {
             RegisteredMemory result = stack.pollFirst();
             if (result == null) {
                 if (length < minRegistrationSize) {
                     int numBuffers = minRegistrationSize / length;
-                    preallocate(numBuffers);
+                    preallocate(ucxMemoryPool, numBuffers);
                     result = stack.pollFirst();
                     if (result == null) {
-                        return get();
+                        return get(ucxMemoryPool);
                     }
                     else {
                         result.getRefCount().incrementAndGet();
                     }
                 }
                 else {
+                    totalAllocated += length;
                     UcpMemMapParams memMapParams = new UcpMemMapParams().setLength(length).allocate();
                     UcpMemory memory = context.memoryMap(memMapParams);
                     ByteBuffer buffer;
@@ -156,7 +165,7 @@ public class UcxMemoryPool
                     catch (Exception e) {
                         throw new UcxException(e.getMessage());
                     }
-                    result = new RegisteredMemory(new AtomicInteger(1), memory, buffer);
+                    result = new RegisteredMemory(ucxMemoryPool, new AtomicInteger(1), memory, buffer);
                     totalAlloc.incrementAndGet();
                 }
             }
@@ -173,12 +182,12 @@ public class UcxMemoryPool
             stack.addLast(registeredMemory);
         }
 
-        private void preallocate(int numBuffers)
+        private void preallocate(UcxMemoryPool ucxMemoryPool, int numBuffers)
         {
             if ((long) length * (long) numBuffers > Integer.MAX_VALUE) {
                 numBuffers = Integer.MAX_VALUE / length;
             }
-
+            totalAllocated += numBuffers * (long) length;
             UcpMemMapParams memMapParams = new UcpMemMapParams().allocate().setLength(numBuffers * (long) length);
             UcpMemory memory = context.memoryMap(memMapParams);
             ByteBuffer buffer;
@@ -193,7 +202,9 @@ public class UcxMemoryPool
             for (int i = 0; i < numBuffers; i++) {
                 buffer.position(i * length).limit(i * length + length);
                 final ByteBuffer slice = buffer.slice();
-                RegisteredMemory registeredMemory = new RegisteredMemory(refCount, memory, slice);
+                slice.putInt(0);
+                slice.clear();
+                RegisteredMemory registeredMemory = new RegisteredMemory(ucxMemoryPool, refCount, memory, slice);
                 put(registeredMemory);
             }
             preAllocs.incrementAndGet();

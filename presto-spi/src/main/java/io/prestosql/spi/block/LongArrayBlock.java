@@ -57,12 +57,11 @@ public class LongArrayBlock
         this(0, positionCount, valueIsNull.orElse(null), longVec);
     }
 
-    LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values)
+    public LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values)
     {
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
-        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -71,10 +70,20 @@ public class LongArrayBlock
         if (values.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
-        this.values = new LongVec(values.length);
-        for (int idx = 0; idx < values.length; idx++) {
-            this.values.set(idx, values[idx]);
+
+        if (arrayOffset > 0) {
+            this.values = new LongVec(positionCount);
+            for (int idx = arrayOffset; idx < arrayOffset + positionCount; idx++) {
+                this.values.set(idx - arrayOffset, values[idx]);
+            }
         }
+        else {
+            this.values = new LongVec(values.length);
+            for (int idx = 0; idx < values.length; idx++) {
+                this.values.set(idx, values[idx]);
+            }
+        }
+        this.arrayOffset = 0;
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -90,7 +99,6 @@ public class LongArrayBlock
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
-        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -99,7 +107,14 @@ public class LongArrayBlock
         if (longVec.size() - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
-        this.values = longVec;
+
+        if (arrayOffset > 0) {
+            this.values = longVec.slice(arrayOffset, arrayOffset + positionCount);
+        }
+        else {
+            this.values = longVec;
+        }
+        this.arrayOffset = 0;
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -111,7 +126,7 @@ public class LongArrayBlock
     }
 
     @Override
-    public LongVec getValuesVec()
+    public LongVec getValues()
     {
         return values;
     }

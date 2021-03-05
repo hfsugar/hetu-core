@@ -27,10 +27,10 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static io.prestosql.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static nova.hetu.shuffle.stream.Constants.EOS;
 import static nova.hetu.shuffle.stream.Constants.MAX_QUEUE_SIZE;
 import static nova.hetu.shuffle.stream.PageSplitterUtil.splitPage;
@@ -40,22 +40,24 @@ public class BroadcastStream
 {
     private static final Logger log = Logger.getLogger(BroadcastStream.class);
 
-    private final BlockingQueue<SerializedPage> pendingPages = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
+    private final BlockingQueue<SerializedPage> pendingPages = new LinkedBlockingQueue<>();
     private final Set<Integer> addedChannels = new HashSet<>();
     private final Map<Integer, BlockingQueue<SerializedPage>> channels = new ConcurrentHashMap<>();
 
     private final PagesSerde serde;
     private final String id;
-    private boolean eos; // endOfStream
+    private AtomicBoolean eos = new AtomicBoolean(false); // endOfStream
     private static final PagesSerde.CommunicationMode commMode = PagesSerde.CommunicationMode.UCX;
+    private final int maxPageSizeInBytes;
 
     private boolean channelsAdded;
     private Consumer<Boolean> streamDestroyHandler;
 
-    public BroadcastStream(String id, PagesSerde serde)
+    public BroadcastStream(String id, PagesSerde serde, int maxPageSizeInBytes)
     {
         this.id = id;
         this.serde = serde;
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
     }
 
     @Override
@@ -75,7 +77,7 @@ public class BroadcastStream
         if (channel == null) {
             throw new RuntimeException("Channel doesn't exist, stream id " + id + ", channel " + channelId);
         }
-        log.info("Stream " + id + " take channel " + channelId);
+        log.trace("Stream " + id + " take channel " + channelId);
         return channel.take();
     }
 
@@ -83,7 +85,7 @@ public class BroadcastStream
     public void write(Page page)
             throws InterruptedException
     {
-        List<SerializedPage> serializedPages = splitPage(page, DEFAULT_MAX_PAGE_SIZE_IN_BYTES).stream()
+        List<SerializedPage> serializedPages = splitPage(page, this.maxPageSizeInBytes).stream()
                 .map(p -> PageSerializeUtil.serialize(serde, p, commMode))
                 .collect(Collectors.toList());
 
@@ -111,44 +113,46 @@ public class BroadcastStream
             return;
         }
 
-        List<Integer> newChannels = channelIds.stream().filter(channelId -> !addedChannels.contains(channelId)).collect(Collectors.toList());
-        if (newChannels.isEmpty()) {
-            // streams all finish but haven't received noMoreChannels
-            // so we need to destroy the main stream here
-            if (noMoreChannels) {
-                channelsAdded = true;
-                if (channels.isEmpty()) {
-                    destroy();
+        synchronized (channels) {
+            List<Integer> newChannels = channelIds.stream().filter(channelId -> !addedChannels.contains(channelId)).collect(Collectors.toList());
+            if (newChannels.isEmpty()) {
+                // streams all finish but haven't received noMoreChannels
+                // so we need to destroy the main stream here
+                if (noMoreChannels) {
+                    channelsAdded = true;
+                    if (channels.isEmpty()) {
+                        destroy();
+                    }
                 }
+                return;
             }
-            return;
-        }
 
-        for (Integer channelId : newChannels) {
-            String streamId = id + "-" + channelId;
-            StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
-            channels.put(channelId, new LinkedBlockingQueue<>(MAX_QUEUE_SIZE));
-            addedChannels.add(channelId);
-            log.info("Stream " + id + " add channel " + channelId);
-        }
+            for (Integer channelId : newChannels) {
+                String streamId = id + "-" + channelId;
+                StreamManager.putIfAbsent(streamId, new ReferenceStream(channelId, streamId, this));
+                channels.putIfAbsent(channelId, new LinkedBlockingQueue<>(MAX_QUEUE_SIZE));
+                addedChannels.add(channelId);
+                log.info("Stream " + id + " add channel " + channelId);
+            }
 
-        log.info("Stream " + id + " adding " + pendingPages.size() + " pages to channels: " + channels.keySet());
-        for (SerializedPage page : pendingPages) {
-            newChannels.stream().map(channels::get).forEach(channel -> {
+            log.info("Stream " + id + " adding " + pendingPages.size() + " pages to channels: " + channels.keySet());
+            for (SerializedPage page : pendingPages) {
+                newChannels.stream().map(channels::get).forEach(channel -> {
+                    try {
+                        page.acquire();
+                        channel.put(page);
+                    }
+                    catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
                 try {
-                    page.acquire();
-                    channel.put(page);
+                    // we acquired the page once when we added it to the pending pages list, we need to release it once to make sure it's freed
+                    page.close();
                 }
-                catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                catch (IOException e) {
+                    log.warn(e);
                 }
-            });
-            try {
-                // we acquired the page once when we added it to the pending pages list, we need to release it once to make sure it's freed
-                page.close();
-            }
-            catch (IOException e) {
-                log.warn(e);
             }
         }
 
@@ -168,13 +172,13 @@ public class BroadcastStream
                 break;
             }
         }
-        return eos && channelsAdded && allChannelsEmpty;
+        return eos.get() && channelsAdded && allChannelsEmpty;
     }
 
     @Override
     public void destroy()
     {
-        log.info("Stream " + id + " destroyed");
+        log.debug("Stream " + id + " destroyed");
         StreamManager.remove(id);
         if (streamDestroyHandler != null) {
             streamDestroyHandler.accept(true);
@@ -184,7 +188,9 @@ public class BroadcastStream
     @Override
     public void destroyChannel(int channelId)
     {
-        channels.remove(channelId);
+        synchronized (channels) {
+            channels.remove(channelId);
+        }
         log.info("Stream " + id + " channel " + channelId + " destroyed");
         if (channels.isEmpty() && channelsAdded) {
             destroy();
@@ -201,16 +207,19 @@ public class BroadcastStream
     public void close()
             throws InterruptedException
     {
-        if (!eos) {
-            if (!channelsAdded) {
-                pendingPages.put(EOS);
-            }
+        if (!eos.get()) {
+            if (eos.compareAndSet(false, true)) {
+                if (!channelsAdded) {
+                    pendingPages.put(EOS);
+                }
 
-            for (BlockingQueue<SerializedPage> channel : channels.values()) {
-                channel.put(EOS);
+                synchronized (channels) {
+                    for (BlockingQueue<SerializedPage> channel : channels.values()) {
+                        channel.put(EOS);
+                    }
+                }
+                log.info("Stream " + id + " closed");
             }
-            eos = true;
-            log.info("Stream " + id + " closed");
         }
     }
 

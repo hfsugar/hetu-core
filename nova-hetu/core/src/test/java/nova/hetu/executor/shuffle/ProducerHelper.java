@@ -16,7 +16,7 @@ public class ProducerHelper
 
     public ProducerHelper(String taskid, PagesSerde serde, Stream.Type type)
     {
-        producer = new PageProducer(taskid, serde, type);
+        producer = new PageProducer(taskid, serde, type, ShuffleServiceTestUtil.MAX_PAGE_SIZE_IN_BYTES);
     }
 
     /**

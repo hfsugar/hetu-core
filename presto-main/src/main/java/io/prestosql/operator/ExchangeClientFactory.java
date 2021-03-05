@@ -50,6 +50,9 @@ public class ExchangeClientFactory
     private final ExecutorService pageBufferClientCallbackExecutor;
     private final boolean exchangeEnabled;
     private final ShuffleServiceConfig.TransportType transportType;
+    private final int maxPageSizeInBytes;
+    private final int rateLimit;
+    private final boolean inMemoryEnabled;
 
     @Inject
     public ExchangeClientFactory(
@@ -66,6 +69,9 @@ public class ExchangeClientFactory
                 exchangeClientConfig.isAcknowledgePages(),
                 exchangeClientConfig.getPageBufferClientMaxCallbackThreads(),
                 shuffleServiceConfig.getTransportType(),
+                shuffleServiceConfig.getMaxPageSizeInBytes(),
+                shuffleServiceConfig.getRateLimit(),
+                shuffleServiceConfig.isInMemoryEnabled(),
                 httpClient,
                 scheduler,
                 exchangeClientConfig.isExchangeEnabled());
@@ -79,10 +85,16 @@ public class ExchangeClientFactory
             boolean acknowledgePages,
             int pageBufferClientMaxCallbackThreads,
             ShuffleServiceConfig.TransportType transportType,
+            int maxPageSizeInBytes,
+            int rateLimit,
+            boolean inMemoryEnabled,
             HttpClient httpClient,
             ScheduledExecutorService scheduler,
             boolean exchangeEnabled)
     {
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
+        this.rateLimit = rateLimit;
+        this.inMemoryEnabled = inMemoryEnabled;
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
         this.maxErrorDuration = requireNonNull(maxErrorDuration, "maxErrorDuration is null");
@@ -127,7 +139,11 @@ public class ExchangeClientFactory
                     concurrentRequestMultiplier,
                     systemMemoryContext,
                     pagesSerde,
-                    transportType);
+                    transportType,
+                    maxPageSizeInBytes,
+                    rateLimit,
+                    inMemoryEnabled,
+                    scheduler);
         }
         return new HttpExchangeClient(
                 maxBufferedBytes,

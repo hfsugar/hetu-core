@@ -20,10 +20,12 @@ public class UcxConstant
     public static final int BYTE_SIZE = 1;
     public static final int LONG_SIZE = 8;
     public static final int INT_SIZE = 4;
-    public static final int UCX_MIN_BUFFER_SIZE = 4096;
+    public static final int BASE_BUFFER_SIZE = 4096;
+    public static final int UCX_MIN_BUFFER_SIZE = 512;
+    public static final int UCX_MAX_MSG_SIZE = UCX_MIN_BUFFER_SIZE;
+    public static final int MIN_OFF_HEAP_TRANSFER = 1024 * 1024 * 2;
     public static final int BASE_BUFFER_NB = 4096;
-    public static final int DEFAULT_RATE_LIMIT = 64;
-    public static final float DEFAULT_PREFETCH_COEFF = 0.8f;
+    public static final float DEFAULT_PREFETCH_COEFF = 0.7f;
 
     private UcxConstant() {}
 }

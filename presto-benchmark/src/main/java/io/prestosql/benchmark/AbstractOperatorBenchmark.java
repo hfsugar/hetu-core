@@ -258,15 +258,11 @@ public abstract class AbstractOperatorBenchmark
         List<Driver> drivers = createDrivers(taskContext);
         long peakMemory = 0;
         boolean done = false;
-
         while (!done) {
             boolean processed = false;
             for (Driver driver : drivers) {
                 if (!driver.isFinished()) {
-                    long start1 = System.currentTimeMillis();
                     driver.process();
-                    long end1 = System.currentTimeMillis();
-                    System.out.println("driver ID: "+driver.getDriverContext().getDriverId()+" execute time: " + (end1 - start1));
                     long lastPeakMemory = peakMemory;
                     peakMemory = (long) taskContext.getTaskStats().getUserMemoryReservation().getValue(BYTE);
                     if (peakMemory <= lastPeakMemory) {
@@ -277,7 +273,6 @@ public abstract class AbstractOperatorBenchmark
             }
             done = !processed;
         }
-
         return ImmutableMap.of("peak_memory", peakMemory);
     }
 

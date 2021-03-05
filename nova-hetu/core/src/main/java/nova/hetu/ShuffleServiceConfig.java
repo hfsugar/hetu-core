@@ -22,8 +22,12 @@ import java.net.UnknownHostException;
 public class ShuffleServiceConfig
 {
     private boolean enabled = true;
+    private boolean inMemoryEnabled = false;
+    private boolean zeroCopyEnabled = true;
     private String host;
+    private int rateLimit = 64;
     private int port = 16544;
+    private int maxPageSizeInBytes = 1024*1024;
     private TransportType transportType = TransportType.UCX;
 
     public enum TransportType
@@ -31,6 +35,54 @@ public class ShuffleServiceConfig
         RSOCKET,
         GRPC,
         UCX
+    }
+
+    public int getRateLimit()
+    {
+        return rateLimit;
+    }
+
+    @Config("shuffle-service.rate-limit")
+    public ShuffleServiceConfig setRateLimit(int rateLimit)
+    {
+        this.rateLimit = rateLimit;
+        return this;
+    }
+
+    public boolean isZeroCopyEnabled()
+    {
+        return zeroCopyEnabled;
+    }
+
+    @Config("shuffle-service.zero-copy-enabled")
+    public ShuffleServiceConfig setZeroCopyEnabled(boolean zeroCopyEnabled)
+    {
+        this.zeroCopyEnabled = zeroCopyEnabled;
+        return this;
+    }
+
+    public boolean isInMemoryEnabled()
+    {
+        return inMemoryEnabled;
+    }
+
+    @Config("shuffle-service.in-memory-enabled")
+    public ShuffleServiceConfig setInMemoryEnabled(boolean inMemoryEnabled)
+    {
+        this.inMemoryEnabled = inMemoryEnabled;
+        return this;
+    }
+
+    public int getMaxPageSizeInBytes()
+    {
+        return maxPageSizeInBytes;
+    }
+
+    @Config("shuffle-service.max-page-size-in-bytes")
+    public ShuffleServiceConfig setMaxPageSizeInBytes(int maxPageSizeInBytes)
+    {
+        this.maxPageSizeInBytes = maxPageSizeInBytes;
+        return this;
     }
 
     public boolean isEnabled()

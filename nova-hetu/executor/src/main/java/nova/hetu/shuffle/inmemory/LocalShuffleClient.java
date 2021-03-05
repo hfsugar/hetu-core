@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
 
@@ -39,6 +40,12 @@ public class LocalShuffleClient
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private Future resultFuture;
     private ShuffleClientCallback shuffleClientCallback;
+    private final Supplier<?> pollPageSupplier;
+
+    public LocalShuffleClient(Supplier<?> pollPageSupplier)
+    {
+        this.pollPageSupplier = pollPageSupplier;
+    }
 
     public void getResults(String host, int port, String producerId, LinkedBlockingQueue<SerializedPage> pageOutputBuffer, ShuffleClientCallback shuffleClientCallback)
     {
@@ -52,6 +59,7 @@ public class LocalShuffleClient
                 }
                 if (stream == null) {
                     log.warn("Could not get Stream for Producer: " + producerId + " before exchange client closed");
+                    pollPageSupplier.get();
                     return;
                 }
                 try {
@@ -59,16 +67,19 @@ public class LocalShuffleClient
                     if (page == EOS) {
                         stream.destroy();
                         shuffleClientCallback.clientFinished();
-                        log.info("Local shuffle client is done");
+                        log.debug("Local shuffle client is done");
+                        pollPageSupplier.get();
                         return;
                     }
                     else {
                         pageOutputBuffer.put(page);
+                        pollPageSupplier.get();
                     }
-                    log.info(page);
+                    log.debug(page);
                 }
                 catch (Exception e) {
                     shuffleClientCallback.clientFailed(e);
+                    pollPageSupplier.get();
                 }
             }
         });
@@ -82,6 +93,7 @@ public class LocalShuffleClient
         if (resultFuture != null && !resultFuture.isDone()) {
             resultFuture.cancel(true);
             this.shuffleClientCallback.clientFinished();
+            pollPageSupplier.get();
         }
     }
 }

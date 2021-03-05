@@ -133,9 +133,8 @@ public class PrestoServer
 
         try {
             Injector injector = app.strictConfig().initialize();
-            ShuffleServiceConfig shuffleServiceConfig = new ShuffleServiceConfig();
 
-            if (shuffleServiceConfig.isEnabled()) {
+            if (injector.getInstance(ShuffleServiceConfig.class).isEnabled()) {
                 ShuffleServer shuffleServer = ShuffleServerFactory.create(injector.getInstance(ShuffleServiceConfig.class));
                 shuffleServer.start();
             }

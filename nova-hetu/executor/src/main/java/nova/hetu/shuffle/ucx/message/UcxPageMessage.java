@@ -36,7 +36,6 @@ public class UcxPageMessage
     // Each block in page metadata has next layout:
     // | dataAddress(8B) | dataSize(8B) | dataPositionCount(4B) | dataHashCode(4B) | dataRkeySize(4B) |dataRkey(dataRkeySize Bytes) |
 
-    private static final int MAX_RKEY_SIZE = 150;
     private static final int PAGE_METADATA_HEADER_SIZE = INT_SIZE * 3 + BYTE_SIZE * 2;
     private static final int BLOCK_METADATA_SIZE = LONG_SIZE * 2 + INT_SIZE + MAX_RKEY_SIZE;
     private static final Logger log = Logger.getLogger(UcxPageMessage.class);
@@ -47,12 +46,18 @@ public class UcxPageMessage
     private final int positionCount;
     private final int uncompressedSizeInBytes;
 
+    @Override
+    public int getMaxMessageSize()
+    {
+        return MAX_MESSAGE_SIZE;
+    }
+
     public UcxPageMessage(ByteBuffer data)
     {
         super(data);
         this.blockNumber = data.getInt();
         this.pageCodecMarkers = data.get();
-        this.offHeap = data.get() == 1 ? true : false;
+        this.offHeap = data.get() == 1;
         this.positionCount = data.getInt();
         this.uncompressedSizeInBytes = data.getInt();
         this.data = data;
@@ -227,7 +232,8 @@ public class UcxPageMessage
 
         public RegisteredMemory build()
         {
-            RegisteredMemory memory = build(PAGE_METADATA_HEADER_SIZE + blockMetadataVector.size() * BLOCK_METADATA_SIZE);
+            int bufferSize = PAGE_METADATA_HEADER_SIZE + blockMetadataVector.size() * BLOCK_METADATA_SIZE;
+            RegisteredMemory memory = build(bufferSize);
             ByteBuffer buffer = memory.getBuffer();
             buffer.putInt(this.blockMetadataVector.size());
             buffer.put(this.pageCodecMarkers);

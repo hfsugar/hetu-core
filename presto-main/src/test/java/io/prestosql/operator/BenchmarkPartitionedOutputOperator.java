@@ -132,7 +132,7 @@ public class BenchmarkPartitionedOutputOperator
                     false,
                     OptionalInt.empty(),
                     buffer,
-                    ImmutableList.of(new PageProducer("task-1-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC)),
+                    ImmutableList.of(new PageProducer("task-1-0", serdeFactory.createPagesSerde(), Stream.Type.BASIC, 1024*1024*16)),
                     new DataSize(1, GIGABYTE));
             return (PartitionedOutputOperator) operatorFactory
                     .createOutputOperator(0, new PlanNodeId("plan-node-0"), TYPES, Function.identity(), serdeFactory)

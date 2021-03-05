@@ -32,6 +32,8 @@ public class ShuffleServiceTestUtil
 {
     public static final int TEST_SHUFFLE_SERVICE_PORT = 16544;
     public static final String TEST_SHUFFLE_SERVICE_HOST = "127.0.1.1";
+    public static final int MAX_PAGE_SIZE_IN_BYTES = 1024*1024;
+    public static final int RATE_LIMIT = 64;
 
     private ShuffleServiceTestUtil() {}
 

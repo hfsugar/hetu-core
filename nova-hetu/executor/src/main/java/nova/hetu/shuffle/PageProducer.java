@@ -29,10 +29,10 @@ public class PageProducer
     public static final Logger LOG = Logger.getLogger(PageProducer.class);
     private final Stream stream;
 
-    public PageProducer(String producerId, PagesSerde pagesSerde, Stream.Type type)
+    public PageProducer(String producerId, PagesSerde pagesSerde, Stream.Type type, int maxPageSizeInBytes)
     {
-        LOG.info("Create or get producer " + producerId);
-        this.stream = StreamFactory.getOrCreate(producerId, pagesSerde, type);
+        LOG.debug("Create or get producer " + producerId);
+        this.stream = StreamFactory.getOrCreate(producerId, pagesSerde, type, maxPageSizeInBytes);
     }
 
     public void send(Page page)

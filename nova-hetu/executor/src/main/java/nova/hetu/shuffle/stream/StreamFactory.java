@@ -20,22 +20,22 @@ public class StreamFactory
 {
     private StreamFactory() {}
 
-    public static synchronized Stream getOrCreate(String producerId, PagesSerde serde, Stream.Type type)
+    public static synchronized Stream getOrCreate(String producerId, PagesSerde serde, Stream.Type type, int maxPageSizeInBytes)
     {
         Stream stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.INMEMORY);
         if (stream == null) {
-            stream = create(producerId, serde, type);
+            stream = create(producerId, serde, type, maxPageSizeInBytes);
         }
         return stream;
     }
 
-    public static Stream create(String producerId, PagesSerde serde, Stream.Type type)
+    public static Stream create(String producerId, PagesSerde serde, Stream.Type type, int maxPageSizeInBytes)
     {
         switch (type) {
             case BASIC:
-                return new BasicStream(producerId, serde);
+                return new BasicStream(producerId, serde, maxPageSizeInBytes);
             case BROADCAST:
-                return new BroadcastStream(producerId, serde);
+                return new BroadcastStream(producerId, serde, maxPageSizeInBytes);
             default:
                 throw new RuntimeException("Unsupported PageProducer type: " + type);
         }

@@ -40,8 +40,8 @@ public class UcxConnectionFactory
                 .requestRmaFeature()
                 .requestTagFeature()
                 .setMtWorkersShared(true));
-        this.ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.UCX_MIN_BUFFER_SIZE);
-        this.ucxMemoryPool.preAlocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        this.ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.BASE_BUFFER_NB*UcxConstant.UCX_MIN_BUFFER_SIZE, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        this.ucxMemoryPool.preAllocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MAX_MSG_SIZE);
     }
 
     public UcxMemoryPool getMemoryPool()

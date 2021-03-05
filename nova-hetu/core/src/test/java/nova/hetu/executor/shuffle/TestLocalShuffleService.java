@@ -54,7 +54,7 @@ public class TestLocalShuffleService
         producer.close();
 
         long[] result = new long[10];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
         consumerThread.start();
         consumerThread.join();
@@ -77,7 +77,7 @@ public class TestLocalShuffleService
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[10];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
         consumerThread.start();
         assertFalse(consumer.isEnded());
@@ -103,7 +103,7 @@ public class TestLocalShuffleService
         producer.close();
 
         long[] result = new long[10];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
         consumerThread.start();
         consumerThread.join();
@@ -133,7 +133,7 @@ public class TestLocalShuffleService
         producer.close();
 
         long[] result = new long[10];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
         consumerThread.start();
         producer.addConsumers(ImmutableList.of(bufferid), true);
@@ -159,7 +159,7 @@ public class TestLocalShuffleService
         producer.close();
 
         long[] result = new long[0];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(0);
         consumerThread.start();
         consumerThread.join();
@@ -187,8 +187,8 @@ public class TestLocalShuffleService
         long[] result = new long[10];
         long[] result2 = new long[10];
 
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
-        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result2, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
+        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result2, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
         Thread consumerThread2 = consumer2.createConsumerThread(10);
         consumerThread.start();
@@ -219,7 +219,7 @@ public class TestLocalShuffleService
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[40];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(10);
 
         ProducerHelper producer1 = new ProducerHelper(taskid, serde, BASIC);
@@ -264,7 +264,7 @@ public class TestLocalShuffleService
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[40];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
 
         assertFalse(consumer.isEnded(), "page consumer started with ended status");
 
@@ -313,8 +313,8 @@ public class TestLocalShuffleService
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
 
         long[] result = new long[400];
-        ConsumerHelper consumer1 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferId1, serde, result, UCX, false);
-        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferId2, serde, result, UCX, false);
+        ConsumerHelper consumer1 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferId1, serde, result, UCX);
+        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferId2, serde, result, UCX);
 
         assertFalse(consumer1.isEnded(), "page consumer started with ended status");
         assertFalse(consumer2.isEnded(), "page consumer started with ended status");
@@ -361,7 +361,7 @@ public class TestLocalShuffleService
 
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         long[] result = new long[4000];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(0);
 
         ProducerHelper producer1 = new ProducerHelper(taskid, serde, BASIC);
@@ -418,7 +418,7 @@ public class TestLocalShuffleService
 
         PagesSerde serde = new ShuffleServiceTestUtil.MockLocalConstantPagesSerde();
         long[] result = new long[4000];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(0);
 
         assertFalse(consumer.isEnded(), "Consumer should not start with ended status");
@@ -476,7 +476,7 @@ public class TestLocalShuffleService
         producer.close();
 
         long[] result = new long[10];
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskid, bufferid, serde, result, UCX);
         Thread consumerThread = consumer.createConsumerThread(0);
         consumerThread.start();
         consumerThread.join();
@@ -504,8 +504,8 @@ public class TestLocalShuffleService
 
         long[] result = new long[totalPages];
 
-        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId, bufferId1, serde, result, UCX, false);
-        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId, bufferId2, serde, result, UCX, false);
+        ConsumerHelper consumer = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId, bufferId1, serde, result, UCX);
+        ConsumerHelper consumer2 = new ConsumerHelper(TEST_SHUFFLE_SERVICE_HOST, TEST_SHUFFLE_SERVICE_PORT, taskId, bufferId2, serde, result, UCX);
 
         Thread consumerThread = consumer.createConsumerThread(10);
         Thread consumerThread2 = consumer2.createConsumerThread(10);
