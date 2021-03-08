@@ -14,7 +14,6 @@
  */
 package nova.hetu.shuffle.ucx.memory;
 
-import nova.hetu.shuffle.ucx.UcxConstant;
 import org.apache.log4j.Logger;
 import org.openucx.jucx.UcxException;
 import org.openucx.jucx.UcxUtils;
@@ -41,13 +40,16 @@ public class UcxMemoryPool
     private final UcpContext context;
     private final int minBufferSize;
     private final long minRequestedBufferSize;
+    private final String name;
+    private final AtomicInteger refCount = new AtomicInteger(1);
     private long totalAllocated = 0;
 
-    public UcxMemoryPool(UcpContext context, int minBufferSize, int minRequestedBufferSize)
+    public UcxMemoryPool(UcpContext context, int minBufferSize, int minRequestedBufferSize, String name)
     {
         this.context = context;
         this.minBufferSize = minBufferSize;
         this.minRequestedBufferSize = roundUpToTheNextPowerOf2(minRequestedBufferSize);
+        this.name = name;
     }
 
     private static ByteBuffer getByteBuffer(long address, int length)
@@ -65,13 +67,28 @@ public class UcxMemoryPool
         }
     }
 
+    public String getName()
+    {
+        return name;
+    }
+
     @Override
     public void close()
     {
-        for (AllocatorStack stack : allocStackMap.values()) {
-            stack.close();
+        logger.debug(name + " final  Releasing with refcount " + refCount.get());
+        release();
+    }
+
+    private int release()
+    {
+        if (refCount.decrementAndGet() == 0) {
+            logger.debug("Closing memory pool " + name);
+            for (AllocatorStack stack : allocStackMap.values()) {
+                stack.close();
+            }
+            allocStackMap.clear();
         }
-        allocStackMap.clear();
+        return refCount.get();
     }
 
     public long getTotalAllocated()
@@ -99,6 +116,9 @@ public class UcxMemoryPool
 
     public RegisteredMemory get(int size)
     {
+        if (refCount.getAndIncrement() == 0) {
+            return null;
+        }
         long roundedSize = roundUpToTheNextPowerOf2(size);
         AllocatorStack stack =
                 allocStackMap.computeIfAbsent((int) roundedSize, AllocatorStack::new);
@@ -113,6 +133,7 @@ public class UcxMemoryPool
         if (allocatorStack != null) {
             allocatorStack.put(memory);
         }
+        release();
     }
 
     public void preAllocate(int numBuffers, int size)

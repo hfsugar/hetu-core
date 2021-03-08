@@ -51,9 +51,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static nova.hetu.shuffle.stream.Constants.EOS;
-import static nova.hetu.shuffle.ucx.UcxConstant.MIN_OFF_HEAP_TRANSFER;
-import static nova.hetu.shuffle.ucx.UcxConstant.UCX_MAX_MSG_SIZE;
-import static nova.hetu.shuffle.ucx.message.UcxMessage.MAX_RKEY_SIZE;
 
 public class UcxShuffleService
         implements Runnable, Closeable
@@ -218,7 +215,7 @@ public class UcxShuffleService
             this.id = id;
             this.stream = StreamManager.get(producerId, PagesSerde.CommunicationMode.UCX);
             this.sendId = 0;
-            this.pagePool = new UcxMemoryPool(context, rateLimit * maxPageSizeInBytes, maxPageSizeInBytes);
+            this.pagePool = new UcxMemoryPool(context, rateLimit * maxPageSizeInBytes, maxPageSizeInBytes, "service-" + producerId);
             pagePool.preAllocate(rateLimit, maxPageSizeInBytes);
         }
 
@@ -298,7 +295,7 @@ public class UcxShuffleService
             byte[] slice = page.getSliceArray();
             RegisteredMemory pageMemory = this.pagePool.get(slice.length);
             pageMemory.getBuffer().put(slice);
-            pageMemory.getBuffer().clear();
+            pageMemory.getBuffer().rewind();
             resources.add(pageMemory);
 
             UcxPageMessage.BlockMetadata blockMetadata = new UcxPageMessage.BlockMetadata(
@@ -458,14 +455,13 @@ public class UcxShuffleService
                 implements Closeable
         {
 
-            private SerializedPage page;
+            private final SerializedPage page;
+            private final Queue<UcpMemory> blockMemories = new LinkedList();
 
             public OffHeapResource(SerializedPage page)
             {
                 this.page = page;
             }
-
-            private Queue<UcpMemory> blockMemories = new LinkedList();
 
             @Override
             public void close()

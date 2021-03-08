@@ -80,10 +80,10 @@ public class UcxShuffleClient
         private final AtomicBoolean closed;
         private final int maxPageSizeInBytes;
         private final ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys = new ConcurrentHashMap();
+        private final Supplier<?> pollPageSupplier;
         private int rateLimit;
         private int msgId;
         private int numPagesBeforePrefetch;
-        private final Supplier<?> pollPageSupplier;
 
         public Fetch(LinkedBlockingQueue<SerializedPage> pageOutputBuffer, UcxConnection connection, String producerId, ShuffleClientCallback shuffleClientCallback, AtomicBoolean closed, int maxPageSizeInBytes, Supplier<?> pollPageSupplier)
         {
@@ -111,7 +111,7 @@ public class UcxShuffleClient
                 pollPageSupplier.get();
                 return;
             }
-            UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), rateLimit * maxPageSizeInBytes, maxPageSizeInBytes);
+            UcxMemoryPool ucxPageMemoryPool = new UcxMemoryPool(connection.getContext(), rateLimit * maxPageSizeInBytes, maxPageSizeInBytes, "client-" + producerId);
             ucxPageMemoryPool.preAllocate(rateLimit, maxPageSizeInBytes);
             SettableFuture<SerializedPage> pendingFuture = null;
             LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue = new LinkedBlockingQueue<>();

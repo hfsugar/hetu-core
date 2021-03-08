@@ -17,7 +17,6 @@ package nova.hetu.shuffle.ucx.message;
 
 import nova.hetu.shuffle.ucx.memory.RegisteredMemory;
 import nova.hetu.shuffle.ucx.memory.UcxMemoryPool;
-import org.apache.log4j.Logger;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -38,19 +37,12 @@ public class UcxPageMessage
 
     private static final int PAGE_METADATA_HEADER_SIZE = INT_SIZE * 3 + BYTE_SIZE * 2;
     private static final int BLOCK_METADATA_SIZE = LONG_SIZE * 2 + INT_SIZE + MAX_RKEY_SIZE;
-    private static final Logger log = Logger.getLogger(UcxPageMessage.class);
-    private final ByteBuffer data;
     private final int blockNumber;
     private final byte pageCodecMarkers;
     private final boolean offHeap;
     private final int positionCount;
     private final int uncompressedSizeInBytes;
-
-    @Override
-    public int getMaxMessageSize()
-    {
-        return MAX_MESSAGE_SIZE;
-    }
+    private final ArrayList<BlockMetadata> blockMetadataVector = new ArrayList<>();
 
     public UcxPageMessage(ByteBuffer data)
     {
@@ -60,46 +52,32 @@ public class UcxPageMessage
         this.offHeap = data.get() == 1;
         this.positionCount = data.getInt();
         this.uncompressedSizeInBytes = data.getInt();
-        this.data = data;
+        populateMetadata(data, this.blockNumber);
+    }
+
+    @Override
+    public int getMaxMessageSize()
+    {
+        return MAX_MESSAGE_SIZE;
     }
 
     public BlockMetadata getBlockMetadata(int blockId)
     {
-        return new BlockMetadata(blockAddress(blockId),
-                blockSize(blockId),
-                blockPositionCount(blockId),
-                blockRkey(blockId),
-                blockHashCode(blockId));
+        return blockMetadataVector.get(blockId);
     }
 
-    private long blockAddress(int blockId)
+    private void populateMetadata(ByteBuffer metaData, int nbBlocks)
     {
-        return data.getLong(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE);
-    }
-
-    private long blockSize(int blockId)
-    {
-        return data.getLong(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + LONG_SIZE);
-    }
-
-    private int blockPositionCount(int blockId)
-    {
-        return data.getInt(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE);
-    }
-
-    private int blockHashCode(int blockId)
-    {
-        return data.getInt(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE + INT_SIZE);
-    }
-
-    private ByteBuffer blockRkey(int blockId)
-    {
-        int rkeySizeOffset = MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + blockId * BLOCK_METADATA_SIZE + 2 * LONG_SIZE + 2 * INT_SIZE;
-        int dataRkeySize = data.getInt(rkeySizeOffset);
-        ByteBuffer result = data.duplicate(); // We can't capacity ByteBuffer, so duplicate a new ByteBuffer and return.
-        int rkeyOffset = rkeySizeOffset + INT_SIZE;
-        result.position(rkeyOffset).limit(rkeyOffset + dataRkeySize);
-        return result.slice();
+        for (int i = 0; i < nbBlocks; i++) {
+            long dataAddress = metaData.getLong();
+            long dataSize = metaData.getLong();
+            int positionCount = metaData.getInt();
+            int hashCode = metaData.getInt();
+            int rkeySize = metaData.getInt();
+            ByteBuffer dataRkey = metaData.duplicate();
+            dataRkey.limit(rkeySize);
+            this.blockMetadataVector.add(new BlockMetadata(dataAddress, dataSize, positionCount, dataRkey, hashCode));
+        }
     }
 
     public int getBlockNumber()
@@ -163,7 +141,7 @@ public class UcxPageMessage
 
         public ByteBuffer getDataRkey()
         {
-            return dataRkey;
+            return dataRkey.duplicate();
         }
 
         @Override
@@ -241,9 +219,6 @@ public class UcxPageMessage
             buffer.putInt(this.positionCount);
             buffer.putInt(this.uncompressedSizeInBytes);
             blockMetadataVector.forEach(blockMetadata -> {
-                int offset = blockMetadataVector.indexOf(blockMetadata);
-                buffer.position(MESSAGE_HEAD_SIZE + PAGE_METADATA_HEADER_SIZE + offset * BLOCK_METADATA_SIZE);
-
                 buffer.putLong(blockMetadata.dataAddress);
                 buffer.putLong(blockMetadata.dataSize);
                 buffer.putInt(blockMetadata.positionCount);

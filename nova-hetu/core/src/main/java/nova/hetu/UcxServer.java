@@ -67,7 +67,7 @@ public class UcxServer
                 .setMtWorkersShared(true));
         resources.push(context);
 
-        ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.UCX_MIN_BUFFER_SIZE, UcxConstant.UCX_MIN_BUFFER_SIZE);
+        ucxMemoryPool = new UcxMemoryPool(context, UcxConstant.UCX_MIN_BUFFER_SIZE, UcxConstant.UCX_MIN_BUFFER_SIZE, "SERVER_MEMORY_POOL");
         ucxMemoryPool.preAllocate(UcxConstant.BASE_BUFFER_NB, UcxConstant.UCX_MAX_MSG_SIZE);
         resources.push(ucxMemoryPool);
 

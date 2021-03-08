@@ -157,11 +157,11 @@ public class UcxConnection
 
     public void requestNbPages(LinkedBlockingQueue<SettableFuture<SerializedPage>> futureQueue, UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, String producerId, int id, int msgId, int rateLimit, int numProcessed)
     {
-        requestPages(producerId, id, rateLimit, numProcessed);
         for (int i = 0; i < rateLimit; i++) {
             SettableFuture<SerializedPage> pageFuture = queuePageRequest(ucxPageMemoryPool, remoteKeys, id, msgId + i);
             futureQueue.offer(pageFuture);
         }
+        requestPages(producerId, id, rateLimit, numProcessed);
     }
 
     private UcxMemoryPool getMemoryPool()
@@ -169,7 +169,7 @@ public class UcxConnection
         return this.factory.getMemoryPool();
     }
 
-    private void putBlock(Page page, int blockId, ByteBuffer blockBuffer, int positionCount, SettableFuture future)
+    private void putBlock(Page page, int blockId, ByteBuffer blockBuffer, int positionCount, RegisteredMemory pageBufferMsg, SettableFuture future)
             throws IOException
     {
         if (blockId >= page.blocks.length) {
@@ -181,10 +181,11 @@ public class UcxConnection
         if (page.left.decrementAndGet() == 0) {
             SerializedPage serializedPage = new SerializedPage(page.blocks, fromByteValue(page.marker), page.positionCount, page.uncompressedSizeInBytes, page.properties, null);
             future.set(serializedPage);
+            getMemoryPool().put(pageBufferMsg);
         }
     }
 
-    private void readBlocks(long tag, UcxPageMessage pageMetadata, SettableFuture future)
+    private void readBlocks(long tag, UcxPageMessage pageMetadata, RegisteredMemory pageBufferMsg, SettableFuture future)
     {
         int blockNumber = pageMetadata.getBlockNumber();
         Page page = new Page(blockNumber, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes(), null);
@@ -205,7 +206,7 @@ public class UcxConnection
                 public void onSuccess(UcpRequest request)
                 {
                     try {
-                        putBlock(page, finalBlockId, blockBuffer, blockMetadata.getPositionCount(), future);
+                        putBlock(page, finalBlockId, blockBuffer, blockMetadata.getPositionCount(), pageBufferMsg, future);
                     }
                     catch (IOException e) {
                         future.setException(null);
@@ -226,6 +227,9 @@ public class UcxConnection
                     blockMemory.close();
                     // free remote data buffer.
                     remoteKey.close();
+                    if (page.left.decrementAndGet() == 0) {
+                        getMemoryPool().put(pageBufferMsg);
+                    }
                     super.onError(ucsStatus, errorMsg);
                     log.error("Failed Read Blocks - status " + ucsStatus + " Error : " + errorMsg);
                 }
@@ -246,7 +250,7 @@ public class UcxConnection
         return remoteKey;
     }
 
-    private void readPage(UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, long tag, UcxPageMessage pageMetadata, SettableFuture<SerializedPage> future)
+    private void readPage(UcxMemoryPool ucxPageMemoryPool, ConcurrentHashMap<Integer, UcpRemoteKey> remoteKeys, long tag, UcxPageMessage pageMetadata, RegisteredMemory pageBufferMsg, SettableFuture<SerializedPage> future)
     {
         UcxPageMessage.BlockMetadata blockMetadata = pageMetadata.getBlockMetadata(0);
 
@@ -255,7 +259,7 @@ public class UcxConnection
         UcpRemoteKey remoteKey = getRemoteKey(remoteKeys, blockMetadata.getDataRkey());
 
         RegisteredMemory pageBuffer = ucxPageMemoryPool.get((int) remoteSize);
-        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer.getBuffer(),  new UcxCallback()
+        endpoint.getNonBlocking(remoteAddress, remoteKey, pageBuffer.getBuffer(), new UcxCallback()
         {
             @Override
             public void onSuccess(UcpRequest request)
@@ -267,6 +271,7 @@ public class UcxConnection
                     SerializedPage page = new SerializedPage(bytes, pageMetadata.getPageCodecMarkers(), pageMetadata.getPositionCount(), pageMetadata.getUncompressedSizeInBytes());
                     future.set(page);
                     ucxPageMemoryPool.put(pageBuffer);
+                    getMemoryPool().put(pageBufferMsg);
                     // free remote data buffer.
                     super.onSuccess(request);
                 });
@@ -277,6 +282,7 @@ public class UcxConnection
             {
                 future.setException(null);
                 ucxPageMemoryPool.put(pageBuffer);
+                getMemoryPool().put(pageBufferMsg);
                 // free remote data buffer.
                 super.onError(ucsStatus, errorMsg);
                 log.error("Failed Read Page - status " + ucsStatus + " Error : " + errorMsg);
@@ -302,17 +308,16 @@ public class UcxConnection
                         //EoS
                         log.trace("Client receive EOS: [" + tag + "] " + pageMetadata.toString());
                         future.set(EOS);
+                        getMemoryPool().put(pageBuffer);
                     }
                     else {
                         if (pageMetadata.isOffHeap()) {
-                            readBlocks(tag, pageMetadata, future);
+                            readBlocks(tag, pageMetadata, pageBuffer, future);
                         }
                         else {
-                            readPage(ucxPageMemoryPool, remoteKeys, tag, pageMetadata, future);
+                            readPage(ucxPageMemoryPool, remoteKeys, tag, pageMetadata, pageBuffer, future);
                         }
                     }
-
-                    getMemoryPool().put(pageBuffer);
                     super.onSuccess(request);
                 });
             }

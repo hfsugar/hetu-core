@@ -54,7 +54,7 @@ public class RegisteredMemory
     void deregisterNativeMemory()
     {
         if (refcount.get() != 0) {
-            logger.warn("De-registering memory of size " + buffer.capacity() + " that has active references.");
+            logger.warn("De-registering memory of size " + buffer.capacity() + " that has active references on Memory pool" + ucxMemoryPool.getName());
         }
         if (memory != null && memory.getNativeId() != null) {
             memory.deregister();
