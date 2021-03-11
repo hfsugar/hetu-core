@@ -172,6 +172,18 @@ public final class OperatorAssertion
         }
     }
 
+    public static List<Page> toPages(Operator operator, DriverContext driverContext, List<Page> input, boolean revokeMemoryWhenAddingPages)
+    {
+        try {
+            return toPages(operator, input.iterator(), revokeMemoryWhenAddingPages);
+        }
+        catch (Exception e) {
+            throwIfUnchecked(e);
+            throw new RuntimeException(e);
+        }
+    }
+
+
     public static List<Page> toPages(OperatorFactory operatorFactory, DriverContext driverContext)
     {
         return toPages(operatorFactory, driverContext, ImmutableList.of());

@@ -79,8 +79,8 @@ public class LongArrayBlock
             }
         }
         else {
-            this.values = new LongVec(values.length);
-            for (int idx = 0; idx < values.length; idx++) {
+            this.values = new LongVec(positionCount);///
+            for (int idx = 0; idx < positionCount; idx++) {
                 this.values.set(idx, values[idx]);
             }
         }

@@ -56,6 +56,7 @@ import io.prestosql.operator.ExplainAnalyzeOperator.ExplainAnalyzeOperatorFactor
 import io.prestosql.operator.FilterAndProjectOperator;
 import io.prestosql.operator.GroupIdOperator;
 import io.prestosql.operator.HashAggregationOmniOperator;
+import io.prestosql.operator.HashAggregationOmniOperatorV2;
 import io.prestosql.operator.HashAggregationOperator.HashAggregationOperatorFactory;
 import io.prestosql.operator.HashBuilderOperator.HashBuilderOperatorFactory;
 import io.prestosql.operator.HashSemiJoinOperator.HashSemiJoinOperatorFactory;
@@ -208,6 +209,9 @@ import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
 import nova.hetu.omnicache.runtime.OmniRuntime;
+import nova.hetu.omnicache.vector.AggType;
+import nova.hetu.omnicache.vector.Vec;
+import nova.hetu.omnicache.vector.VecType;
 import nova.hetu.shuffle.PageProducer;
 
 import javax.inject.Inject;
@@ -223,6 +227,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -3029,57 +3034,7 @@ public class LocalExecutionPlanner
             else {
                 Optional<Integer> hashChannel = hashSymbol.map(channelGetter(source));
                 if (getOmniCacheEnabled(session)) {
-                    List<String> compileID = new ArrayList<>();
-                    OmniRuntime omniRuntime;
-                    long start = System.currentTimeMillis();
-                    omniRuntime = new OmniRuntime();
-                    ArrayList<String> codes = new ArrayList<>();
-
-                    //two group by and two sum
-                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[i64]]|" +
-                            "let sum_dict_ = for(zip(v0, v1, v2, v3), dictmerger[{i64,i64}, {i64, i64},+], |b,i,n| " +
-                            "for(zip(n.$0, n.$1, n.$2, n.$3), b, |b_, i_, m|" +
-                            "merge(b, {{m.$0, m.$1}, {m.$2, m.$3}})));" +
-                            "let dict_0_1 = tovec(result(sum_dict_));" +
-                            "let k0 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$0)));" +
-                            "let k1 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$1)));" +
-                            "let sum_1 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$1.$0)));" +
-                            "let sum_2 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$1.$1)));" +
-                            "{k0, k1, sum_1, sum_2}");
-
-//                  sum and avg--using DoubleArrayBlock
-//                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[i64]]|" +
-//                            "let sum_dict_2 = for(zip(v0, v1, v2), dictmerger[{i64,i64}, i64,+], |b,i,n| " +
-//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
-//                            "merge(b, {{m.$0, m.$1}, m.$2})));" +
-//                            "let dict_0_1 = tovec(result(sum_dict_2));" +
-//                            "let k0 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$0)));" +
-//                            "let k1 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$1)));" +
-//                            "let sum_2 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$1)));" +
-//                            "let avg_sum_3 = for(zip(v0, v1, v3), dictmerger[{i64,i64}, {i64, i64}, +], |b,i,n| " +
-//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
-//                            "merge(b, {{m.$0, m.$1}, {m.$2, i64(1)}})));" +
-//                            "let avg_3 = result(for(tovec(result(avg_sum_3)), appender[f64], |b, i, n| merge(b, f64(n.$1.$0) / f64(n.$1.$1))));" +
-//                            "{k0, k1, sum_2, avg_3}");
-//                    codes.add("|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[i64]], v3: vec[vec[f64]]|" +
-//                            "let sum_dict_2 = for(zip(v0, v1, v2), dictmerger[{i64,i64}, i64,+], |b,i,n| " +
-//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
-//                            "merge(b, {{m.$0, m.$1}, m.$2})));" +
-//                            "let dict_0_1 = tovec(result(sum_dict_2));" +
-//                            "let k0 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$0)));" +
-//                            "let k1 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$0.$1)));" +
-//                            "let sum_2 = result(for(dict_0_1, appender[i64], |b, i, n| merge(b, n.$1)));" +
-//                            "let avg_sum_3 = for(zip(v0, v1, v3), dictmerger[{i64,i64}, {f64, f64}, +], |b,i,n| " +
-//                            "for(zip(n.$0, n.$1, n.$2), b, |b_, i_, m|" +
-//                            "merge(b, {{m.$0, m.$1}, {m.$2, 1.0}})));" +
-//                            "let avg_3 = result(for(tovec(result(avg_sum_3)), appender[f64], |b, i, n| merge(b, f64(n.$1.$0) / f64(n.$1.$1))));" +
-//                            "{k0, k1, sum_2, avg_3}");
-
-                    for (String code : codes) {
-                        compileID.add(omniRuntime.compile(code));
-                    }
-                    log.info("omni compile time: %s",System.currentTimeMillis()-start);
-                    return new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, omniRuntime, compileID);
+                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, groupByChannels,groupByTypes,aggregationOutputSymbols,aggregations,accumulatorFactories);
                 }
                 return new HashAggregationOperatorFactory(
                         context.getNextOperatorId(),
@@ -3100,6 +3055,18 @@ public class LocalExecutionPlanner
                         joinCompiler,
                         useSystemMemory);
             }
+        }
+    }
+
+    private VecType toVecType(String signatureBaseType)
+    {
+        switch (signatureBaseType) {
+            case "bigint":
+                return VecType.LONG;
+            case "int":
+                return VecType.INT;
+            default:
+                throw new UnsupportedOperationException("unsupported omni data type by OmniRuntime: " +signatureBaseType);
         }
     }
 

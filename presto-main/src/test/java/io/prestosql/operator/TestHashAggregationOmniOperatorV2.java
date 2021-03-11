@@ -14,33 +14,30 @@
 package io.prestosql.operator;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
-import io.prestosql.memory.context.AggregatedMemoryContext;
+import io.airlift.units.DataSize;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.operator.aggregation.InternalAggregationFunction;
-import io.prestosql.operator.aggregation.builder.HashAggregationBuilder;
-import io.prestosql.operator.aggregation.builder.InMemoryHashAggregationBuilder;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PageBuilder;
 import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.function.Signature;
 import io.prestosql.spi.type.Type;
-import io.prestosql.spiller.Spiller;
-import io.prestosql.spiller.SpillerFactory;
 import io.prestosql.sql.gen.JoinCompiler;
+import io.prestosql.sql.planner.plan.AggregationNode;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.MaterializedResult;
 import io.prestosql.testing.TestingTaskContext;
-import nova.hetu.omnicache.runtime.OmniRuntime;
+import nova.hetu.omnicache.vector.AggType;
+import nova.hetu.omnicache.vector.VecType;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -49,8 +46,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-import static com.google.common.util.concurrent.Futures.immediateFailedFuture;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static io.airlift.units.DataSize.succinctBytes;
 import static io.prestosql.SessionTestUtils.TEST_SESSION;
 import static io.prestosql.metadata.MetadataManager.createTestMetadataManager;
@@ -59,15 +56,13 @@ import static io.prestosql.operator.OperatorAssertion.toPages;
 import static io.prestosql.spi.function.FunctionKind.AGGREGATE;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.DoubleType.DOUBLE;
-import static io.prestosql.spi.type.VarcharType.VARCHAR;
 import static io.prestosql.testing.MaterializedResult.resultBuilder;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
 
 @Test(singleThreaded = true)
-public class TestHashAggregationOmniOperator
+public class TestHashAggregationOmniOperatorV2
 {
     private static final Metadata metadata = createTestMetadataManager();
 
@@ -84,16 +79,6 @@ public class TestHashAggregationOmniOperator
     private ScheduledExecutorService scheduledExecutor;
     private JoinCompiler joinCompiler = new JoinCompiler(createTestMetadataManager());
     private DummySpillerFactory spillerFactory;
-    String weldIR = "|v0 :vec[vec[i64]], v1: vec[vec[i64]], v2: vec[vec[f64]], v3: vec[vec[f64]]|" +
-            "let sum_dict_ = for(zip(v0, v1, v2, v3), dictmerger[{i64,i64}, {f64, f64},+], |b,i,n| " +
-            "for(zip(n.$0, n.$1, n.$2, n.$3), b, |b_, i_, m|" +
-            "merge(b, {{m.$0, m.$1}, {m.$2, m.$3}})));" +
-            "let dict_0_1 = tovec(result(sum_dict_));" +
-            "let k0 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$0)));" +
-            "let k1 = result( for (dict_0_1, appender[i64], |b, i, n | merge(b, n.$0.$1)));" +
-            "let sum_1 = result( for (dict_0_1, appender[f64], |b, i, n | merge(b, n.$1.$0)));" +
-            "let sum_2 = result( for (dict_0_1, appender[f64], |b, i, n | merge(b, n.$1.$1)));" +
-            "{k0, k1, sum_1, sum_2}";
 
     @BeforeMethod
     public void setUp()
@@ -107,27 +92,6 @@ public class TestHashAggregationOmniOperator
     public static Object[][] hashEnabled()
     {
         return new Object[][] {{true}, {false}};
-    }
-
-    @DataProvider(name = "hashEnabledAndMemoryLimitForMergeValues")
-    public static Object[][] hashEnabledAndMemoryLimitForMergeValuesProvider()
-    {
-        return new Object[][] {
-                {true, true, true, 8, Integer.MAX_VALUE},
-                {true, true, false, 8, Integer.MAX_VALUE},
-                {false, false, false, 0, 0},
-                {false, true, true, 0, 0},
-                {false, true, false, 0, 0},
-                {false, true, true, 8, 0},
-                {false, true, false, 8, 0},
-                {false, true, true, 8, Integer.MAX_VALUE},
-                {false, true, false, 8, Integer.MAX_VALUE}};
-    }
-
-    @DataProvider
-    public Object[][] dataType()
-    {
-        return new Object[][] {{VARCHAR}, {BIGINT}};
     }
 
     @AfterMethod(alwaysRun = true)
@@ -145,26 +109,25 @@ public class TestHashAggregationOmniOperator
         dataTypes.add(BIGINT);
         dataTypes.add(BIGINT);
         dataTypes.add(BIGINT);
-        List<Page> inputPages = new ArrayList<>();
-        for (int k = 0; k < totalPageCount; k++) {
+        PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
+        BlockBuilder group1 = pb.getBlockBuilder(0);
+        BlockBuilder group2 = pb.getBlockBuilder(1);
+        BlockBuilder sum1 = pb.getBlockBuilder(2);
+        BlockBuilder sum2 = pb.getBlockBuilder(3);
 
-            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
-            BlockBuilder group1 = pb.getBlockBuilder(0);
-            BlockBuilder group2 = pb.getBlockBuilder(1);
-            BlockBuilder sum1 = pb.getBlockBuilder(2);
-            BlockBuilder sum2 = pb.getBlockBuilder(3);
-
-            for (int i = 0; i < pageDistinctCount; i++) {
-                for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
-                    group1.writeLong(i);
-                    group2.writeLong(i);
-                    sum1.writeLong(1);
-                    sum2.writeLong(1);
-                    pb.declarePosition();
-                }
+        for (int i = 0; i < pageDistinctCount; i++) {
+            for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
+                group1.writeLong(i);
+                group2.writeLong(i);
+                sum1.writeLong(1);
+                sum2.writeLong(1);
+                pb.declarePosition();
             }
-            Page build = pb.build();
+        }
+        Page build = pb.build();
 
+        List<Page> inputPages = new ArrayList<>();
+        for (int i = 0; i < totalPageCount; i++) {
             inputPages.add(build);
         }
         return inputPages;
@@ -174,19 +137,29 @@ public class TestHashAggregationOmniOperator
     int pageDistinctValueRepeatCount = 250000;
     int totalPageCount = 10;
 
-    @Test(invocationCount = 20)
+    @Test(invocationCount = 1)
     public void testHashAggregation()
     {
-
-        int threadNum = 100;
+//        try {
+//            Thread.sleep(20000);
+//        }
+//        catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+        int threadNum = 1;
         List<Page> input = builderPage();
-        OmniRuntime omniRuntime = new OmniRuntime();
-        String compileID = omniRuntime.compile(weldIR);
 
+        int omniTotalChannels = 4;
+        int[] omniGrouByChannels = {0, 1};
+        VecType[] omniGroupByTypes = {VecType.LONG, VecType.LONG};
+        int[] omniAggregationChannels = {2, 3};
+        VecType[] omniAggregationTypes = {VecType.LONG, VecType.LONG};
+        AggType[] omniAggregator = {AggType.SUM, AggType.SUM};
+        VecType[] omniAggReturnTypes = {VecType.LONG, VecType.LONG};
+
+//        expected
         DriverContext driverContext = createDriverContext(Integer.MAX_VALUE);
-
         MaterializedResult.Builder expectedBuilder = resultBuilder(driverContext.getSession(), BIGINT, BIGINT, BIGINT, BIGINT);
-
         long sum = totalPageCount * pageDistinctValueRepeatCount;
         for (int i = 0; i < pageDistinctCount; i++) {
             expectedBuilder.row((long) i, (long) i, sum, sum);
@@ -197,18 +170,28 @@ public class TestHashAggregationOmniOperator
         ArrayList<ListenableFuture<List<Page>>> futureArrayList = new ArrayList<>();
         List<List<Page>> pagesList = new ArrayList<>();
         for (int i = 0; i < threadNum; i++) {
-            final int x = i;
-            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(x, new PlanNodeId(String.valueOf(x)), omniRuntime, Collections.singletonList(compileID)), driverContext, input, false));
+            int id = i + 1;
 
+            HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes);
+
+            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(hashAggregationOmniV2OperatorFactory, driverContext, input, false));
+//            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(getOriginalAggFactory(), driverContext, input, false));
             futureArrayList.add(submit);
         }
 
         waitAllTaskFinished(futureArrayList, pagesList);
 
-        assertEquals(threadNum, pagesList.size());
+        assertEquals(pagesList.size(), threadNum);
         for (int i = 0; i < pagesList.size(); i++) {
             assertPagesEqualIgnoreOrder(driverContext, pagesList.get(i), expected, false, Optional.empty());
         }
+//        System.out.println("all finished");
+//        try {
+//            Thread.sleep(10000);
+//        }
+//        catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
     }
 
     private void waitAllTaskFinished(ArrayList<ListenableFuture<List<Page>>> futureArrayList, List<List<Page>> pagesList)
@@ -237,9 +220,27 @@ public class TestHashAggregationOmniOperator
         }
     }
 
-    private DriverContext createDriverContext()
+    protected static final JoinCompiler JOIN_COMPILER = new JoinCompiler(createTestMetadataManager());
+
+    private HashAggregationOperator.HashAggregationOperatorFactory getOriginalAggFactory()
     {
-        return createDriverContext(Integer.MAX_VALUE);
+        InternalAggregationFunction doubleSum = metadata.getAggregateFunctionImplementation(
+                new Signature("sum", AGGREGATE, BIGINT.getTypeSignature(), BIGINT.getTypeSignature()));
+        HashAggregationOperator.HashAggregationOperatorFactory aggregationOperatorFactory = new HashAggregationOperator.HashAggregationOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                ImmutableList.of(BIGINT, BIGINT),
+                Ints.asList(0, 1),
+                ImmutableList.of(),
+                AggregationNode.Step.SINGLE,
+                ImmutableList.of(doubleSum.bind(ImmutableList.of(2), Optional.empty()), doubleSum.bind(ImmutableList.of(3), Optional.empty())),
+                Optional.empty(),
+                Optional.empty(),
+                100_000,
+                Optional.of(new DataSize(16, MEGABYTE)),
+                JOIN_COMPILER,
+                false);
+        return aggregationOperatorFactory;
     }
 
     private DriverContext createDriverContext(long memoryLimit)
@@ -249,44 +250,5 @@ public class TestHashAggregationOmniOperator
                 .build()
                 .addPipelineContext(0, true, true, false)
                 .addDriverContext();
-    }
-
-    private int getHashCapacity(Operator operator)
-    {
-        assertTrue(operator instanceof HashAggregationOperator);
-        HashAggregationBuilder aggregationBuilder = ((HashAggregationOperator) operator).getAggregationBuilder();
-        if (aggregationBuilder == null) {
-            return 0;
-        }
-        assertTrue(aggregationBuilder instanceof InMemoryHashAggregationBuilder);
-        return ((InMemoryHashAggregationBuilder) aggregationBuilder).getCapacity();
-    }
-
-    private static class FailingSpillerFactory
-            implements SpillerFactory
-    {
-        @Override
-        public Spiller create(List<Type> types, SpillContext spillContext, AggregatedMemoryContext memoryContext)
-        {
-            return new Spiller()
-            {
-                @Override
-                public ListenableFuture<?> spill(Iterator<Page> pageIterator)
-                {
-                    return immediateFailedFuture(new IOException("Failed to spill"));
-                }
-
-                @Override
-                public List<Iterator<Page>> getSpills()
-                {
-                    return ImmutableList.of();
-                }
-
-                @Override
-                public void close()
-                {
-                }
-            };
-        }
     }
 }
