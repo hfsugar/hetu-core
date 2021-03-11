@@ -15,6 +15,7 @@ package io.prestosql.spi.block;
 
 import io.prestosql.spi.util.BloomFilter;
 import nova.hetu.omnicache.vector.LongVec;
+import nova.hetu.omnicache.vector.Vec;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
@@ -190,6 +191,18 @@ public class LongArrayBlock
             throw new IllegalArgumentException("offset must be zero");
         }
         return values.get(position + arrayOffset);
+    }
+
+    @Override
+    public Vec getVec()
+    {
+        return this.values;
+    }
+
+    @Override
+    public boolean isOffHeap()
+    {
+        return true;
     }
 
     public Long get(int position)
