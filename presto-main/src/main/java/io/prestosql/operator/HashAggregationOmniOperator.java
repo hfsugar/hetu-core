@@ -163,7 +163,6 @@ public class HashAggregationOmniOperator
         @Override
         public void noMoreOperators()
         {
-
         }
 
         @Override

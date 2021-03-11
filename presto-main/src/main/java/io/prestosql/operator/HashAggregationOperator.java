@@ -422,6 +422,7 @@ public class HashAggregationOperator
         unfinishedWork = aggregationBuilder.processPage(page);
         if (unfinishedWork.process()) {
             unfinishedWork = null;
+            page.release();
         }
         aggregationBuilder.updateMemory();
     }

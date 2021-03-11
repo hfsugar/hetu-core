@@ -351,7 +351,6 @@ public class LongInputStreamV2
             for (int i = 0; i < chunkSize; i++) {
                 longVec.set(offset + i, literals[used + i]);
             }
-//            System.arraycopy(literals, used, values, offset, chunkSize);
             used += chunkSize;
             offset += chunkSize;
             items -= chunkSize;

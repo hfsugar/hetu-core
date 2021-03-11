@@ -15,6 +15,7 @@
 package io.prestosql.spi.block;
 
 import nova.hetu.omnicache.vector.DoubleVec;
+import nova.hetu.omnicache.vector.Vec;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
@@ -169,6 +170,18 @@ public class DoubleArrayBlock
             throw new IllegalArgumentException("offset must be zero");
         }
         return values.get(position + arrayOffset);
+    }
+
+    @Override
+    public Vec getVec()
+    {
+        return this.values;
+    }
+
+    @Override
+    public boolean isOffHeap()
+    {
+        return true;
     }
 
     @Override
