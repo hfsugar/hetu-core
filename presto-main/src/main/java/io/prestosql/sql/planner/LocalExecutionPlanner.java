@@ -73,6 +73,7 @@ import io.prestosql.operator.MergeOperator.MergeOperatorFactory;
 import io.prestosql.operator.NestedLoopJoinBridge;
 import io.prestosql.operator.NestedLoopJoinPagesSupplier;
 import io.prestosql.operator.OperatorFactory;
+import io.prestosql.operator.OrderByOmniOperator.OrderByOmniOperatorFactory;
 import io.prestosql.operator.OrderByOperator.OrderByOperatorFactory;
 import io.prestosql.operator.OutputFactory;
 import io.prestosql.operator.PagesIndex;
@@ -1078,18 +1079,30 @@ public class LocalExecutionPlanner
 
             boolean spillEnabled = isSpillEnabled(context.getSession()) && isSpillOrderBy(context.getSession());
 
-            OperatorFactory operator = new OrderByOperatorFactory(
-                    context.getNextOperatorId(),
-                    node.getId(),
-                    source.getTypes(),
-                    outputChannels.build(),
-                    10_000,
-                    orderByChannels,
-                    sortOrder.build(),
-                    pagesIndexFactory,
-                    spillEnabled,
-                    Optional.of(spillerFactory),
-                    orderingCompiler);
+            OperatorFactory operator;
+            if (getOmniCacheEnabled(context.getSession())) {
+                operator = new OrderByOmniOperatorFactory(
+                        context.getNextOperatorId(),
+                        node.getId(),
+                        source.getTypes(),
+                        outputChannels.build(),
+                        orderByChannels,
+                        sortOrder.build());
+            }
+            else {
+                operator = new OrderByOperatorFactory(
+                        context.getNextOperatorId(),
+                        node.getId(),
+                        source.getTypes(),
+                        outputChannels.build(),
+                        10_000,
+                        orderByChannels,
+                        sortOrder.build(),
+                        pagesIndexFactory,
+                        spillEnabled,
+                        Optional.of(spillerFactory),
+                        orderingCompiler);
+            }
 
             return new PhysicalOperation(operator, source.getLayout(), context, source);
         }
