@@ -104,6 +104,7 @@ public class OrderByOmniOperator
     private final List<Type> sourceTypes;
     private final JniWrapper jniWrapper;
     private final long sortAddress;
+    private long valueAddressesAddr;
     private Iterator<Optional<Page>> sortedPages = null;
     private State state = State.NEEDS_INPUT;
 
@@ -203,7 +204,7 @@ public class OrderByOmniOperator
         }
 
         if (sortedPages == null) {
-            OMResult result = jniWrapper.getResult(sortAddress);
+            OMResult result = jniWrapper.getResult(sortAddress, valueAddressesAddr);
             Block[] blocks = getBlocks(result);
 
             List<Type> outputTypes = new ArrayList<>();
@@ -250,7 +251,7 @@ public class OrderByOmniOperator
                 }
             }
             long start = System.currentTimeMillis();
-            jniWrapper.sort(sortAddress);
+            valueAddressesAddr = jniWrapper.sort(sortAddress);
             long elapsed = System.currentTimeMillis() - start;
             System.out.println("OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
         }
