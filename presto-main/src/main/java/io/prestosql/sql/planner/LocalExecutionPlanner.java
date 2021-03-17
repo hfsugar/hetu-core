@@ -3047,7 +3047,7 @@ public class LocalExecutionPlanner
             else {
                 Optional<Integer> hashChannel = hashSymbol.map(channelGetter(source));
                 if (getOmniCacheEnabled(session)) {
-                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, groupByChannels,groupByTypes,aggregationOutputSymbols,aggregations,accumulatorFactories);
+                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, groupByChannels,groupByTypes,groupBySymbols,aggregationOutputSymbols,aggregations,accumulatorFactories,outputMappings);
                 }
                 return new HashAggregationOperatorFactory(
                         context.getNextOperatorId(),
@@ -3068,18 +3068,6 @@ public class LocalExecutionPlanner
                         joinCompiler,
                         useSystemMemory);
             }
-        }
-    }
-
-    private VecType toVecType(String signatureBaseType)
-    {
-        switch (signatureBaseType) {
-            case "bigint":
-                return VecType.LONG;
-            case "int":
-                return VecType.INT;
-            default:
-                throw new UnsupportedOperationException("unsupported omni data type by OmniRuntime: " +signatureBaseType);
         }
     }
 

@@ -23,9 +23,9 @@ import nova.hetu.omnicache.vector.DoubleVec;
 import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.Vec;
 import nova.hetu.omnicache.vector.VecType;
-import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.checkState;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -34,71 +34,50 @@ public final class HashAggregationOmniWorkV2<O>
         implements Work<Page>
 {
 
-    private final VecType[] omniGroupByTypes;
-    private final VecType[] omniAggregationTypes;
-    private final VecType[] omniAggReturnTypes;
+    private final VecType[] outputTypes;
+    private final int[] outputLayout;
+    private final VecType[] inputTypes;
     OmniRuntime omniRuntime;
     String omniOperatorID;
     private boolean finished;
     private Vec[] result;
     private Page page;
-    private boolean flag;
 
-    public HashAggregationOmniWorkV2(Page page, OmniRuntime omniRuntime, String omniOperatorID, VecType[] omniGroupByTypes, VecType[] omniAggregationTypes, VecType[] omniAggReturnTypes)
+    public HashAggregationOmniWorkV2(Page page, OmniRuntime omniRuntime, String omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
     {
         this.page = page;
         this.omniRuntime = omniRuntime;
         this.omniOperatorID = omniOperatorID;
-        this.omniGroupByTypes = omniGroupByTypes;
-        this.omniAggregationTypes = omniAggregationTypes;
-        this.omniAggReturnTypes = omniAggReturnTypes;
+        this.inputTypes = inputTypes;
+        this.outputTypes = outputTypes;
+        this.outputLayout = outputLayout;
     }
+
+    static AtomicLong total = new AtomicLong(0);
 
     @Override
     public boolean process()
     {
-        VecType[] inputTypes = ArrayUtils.addAll(omniGroupByTypes, omniAggregationTypes);
 
-        Vec[] inputData = new Vec[inputTypes.length];
+        Vec[] inputData = new Vec[page.getChannelCount()];
         for (int i = 0; i < inputTypes.length; i++) {
-            inputData[i] = page.getBlock(i).getValues();
+            Vec vec = page.getBlock(i).getValues();
+            if (vec == null) {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "omni Vec is null,may have been released");
+            }
+            inputData[i] = vec;
+        }
+        if (inputTypes.length != inputData.length) {
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Agg omni operator input type and data not map");
         }
 
         int rowNum = page.getPositionCount();
 
-        if (inputTypes.length!=inputData.length) {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR,"Agg omni operator input type and data not map");
-        }
-
-//        Block b0 = page.getBlock(0);
-//        Block b1 = page.getBlock(1);
-//        for (int i = 0; i < rowNum; i++) {
-//            if((Long)b1.get(i)!=70 &&(Long)b1.get(i)!=79){
-//                flag = true;
-//                System.out.println("input stage column 1 has random value");
-//            }
-//        }
-//        for (int i = 0; i < rowNum; i++) {
-//            if((Long)b0.get(i)!=65 &&(Long)b0.get(i)!=78 &&(Long)b0.get(i)!=82){
-//                flag = true;
-//                System.out.println("input stage column 0 has random value");
-//            }
-//        }
-//
-//        for (int i = 0; i < rowNum; i++) {
-//            if(((LongVec)inputData[1]).get(i)!=70 &&((LongVec)inputData[1]).get(i)!=79){
-//                flag = true;
-//                System.out.println("omniinput stage column 1 has random value");
-//            }
-//        }
-//        for (int i = 0; i < rowNum; i++) {
-//            if(((LongVec)inputData[0]).get(i)!=65 &&((LongVec)inputData[0]).get(i)!=78 &&((LongVec)inputData[0]).get(i)!=82){
-//                flag = true;
-//                System.out.println("omniinput stage column 0 has random value");
-//            }
-//        }
-
+        long start = System.nanoTime();
         omniRuntime.executeAggIntermediate(omniOperatorID, inputData, inputTypes, rowNum);
+        long end = System.nanoTime();
+
+        total.addAndGet(end - start);
 
         finished = true;
         return true;
@@ -109,10 +88,9 @@ public final class HashAggregationOmniWorkV2<O>
     {
         checkState(finished, "process has not finished");
 
-        VecType[] outputTypes = ArrayUtils.addAll(omniGroupByTypes, omniAggReturnTypes);
+        result = omniRuntime.executeAggFinal(omniOperatorID, outputTypes);
 
-        result = omniRuntime.executeAggFinal(omniOperatorID,outputTypes);
-
+        System.out.println("omni hash op total takes: " + (total.get() / 1_000_000) + "ms");
         return toResult(result);
     }
 
@@ -126,12 +104,13 @@ public final class HashAggregationOmniWorkV2<O>
             valueIsNull[i] = false;
         }
         Block[] blocks = new Block[chanelCount];
+
         for (int i = 0; i < chanelCount; i++) {
-            if (omniExecutionResult[i] instanceof DoubleVec) {
-                blocks[i] = new DoubleArrayBlock(positionCount, Optional.of(valueIsNull), ((DoubleVec) omniExecutionResult[i]));
+            if (omniExecutionResult[outputLayout[i]] instanceof DoubleVec) {
+                blocks[i] = new DoubleArrayBlock(positionCount, Optional.of(valueIsNull), ((DoubleVec) omniExecutionResult[outputLayout[i]]));
             }
-            else if(omniExecutionResult[i] instanceof LongVec){
-                blocks[i] = new LongArrayBlock(positionCount, Optional.of(valueIsNull), (LongVec) omniExecutionResult[i]);
+            else if (omniExecutionResult[outputLayout[i]] instanceof LongVec) {
+                blocks[i] = new LongArrayBlock(positionCount, Optional.of(valueIsNull), (LongVec) omniExecutionResult[outputLayout[i]]);
             }
         }
 

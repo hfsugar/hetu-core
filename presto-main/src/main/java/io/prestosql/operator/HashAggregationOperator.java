@@ -373,7 +373,6 @@ public class HashAggregationOperator
         checkState(!finishing, "Operator is already finishing");
         requireNonNull(page, "page is null");
         inputProcessed = true;
-        long start = System.currentTimeMillis();
 
         if (aggregationBuilder == null) {
             // TODO: We ignore spillEnabled here if any aggregate has ORDER BY clause or DISTINCT because they are not yet implemented for spilling.
@@ -425,7 +424,6 @@ public class HashAggregationOperator
             unfinishedWork = null;
             page.release();
         }
-        System.out.println(Thread.currentThread().getName()+" Presto handle one page takes: "+(System.currentTimeMillis()-start));
         aggregationBuilder.updateMemory();
     }
 

@@ -14,6 +14,7 @@
 package io.prestosql.operator;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -26,12 +27,15 @@ import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.function.Signature;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.gen.JoinCompiler;
+import io.prestosql.sql.planner.Symbol;
 import io.prestosql.sql.planner.plan.AggregationNode;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.MaterializedResult;
 import io.prestosql.testing.TestingTaskContext;
 import nova.hetu.omnicache.vector.AggType;
+import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.VecType;
+import org.jetbrains.annotations.NotNull;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -109,46 +113,39 @@ public class TestHashAggregationOmniOperatorV2
         dataTypes.add(BIGINT);
         dataTypes.add(BIGINT);
         dataTypes.add(BIGINT);
-        PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
-        BlockBuilder group1 = pb.getBlockBuilder(0);
-        BlockBuilder group2 = pb.getBlockBuilder(1);
-        BlockBuilder sum1 = pb.getBlockBuilder(2);
-        BlockBuilder sum2 = pb.getBlockBuilder(3);
-
-        for (int i = 0; i < pageDistinctCount; i++) {
-            for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
-                group1.writeLong(i);
-                group2.writeLong(i);
-                sum1.writeLong(1);
-                sum2.writeLong(1);
-                pb.declarePosition();
-            }
-        }
-        Page build = pb.build();
 
         List<Page> inputPages = new ArrayList<>();
-        for (int i = 0; i < totalPageCount; i++) {
+        for (int k = 0; k < totalPageCount; k++) {
+            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
+            BlockBuilder group1 = pb.getBlockBuilder(0);
+            BlockBuilder group2 = pb.getBlockBuilder(1);
+            BlockBuilder sum1 = pb.getBlockBuilder(2);
+            BlockBuilder sum2 = pb.getBlockBuilder(3);
+
+            for (int i = 0; i < pageDistinctCount; i++) {
+                for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
+                    group1.writeLong(i);
+                    group2.writeLong(i);
+                    sum1.writeLong(1);
+                    sum2.writeLong(1);
+                    pb.declarePosition();
+                }
+            }
+            Page build = pb.build();
+
             inputPages.add(build);
         }
         return inputPages;
     }
 
     int pageDistinctCount = 4;
-    int pageDistinctValueRepeatCount = 250000;
-    int totalPageCount = 10;
+    int pageDistinctValueRepeatCount = 250;
+    int totalPageCount = 2000;
+    int threadNum =10;
 
     @Test(invocationCount = 1)
     public void testHashAggregation()
     {
-//        try {
-//            Thread.sleep(20000);
-//        }
-//        catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-        int threadNum = 1;
-        List<Page> input = builderPage();
-
         int omniTotalChannels = 4;
         int[] omniGrouByChannels = {0, 1};
         VecType[] omniGroupByTypes = {VecType.LONG, VecType.LONG};
@@ -156,6 +153,18 @@ public class TestHashAggregationOmniOperatorV2
         VecType[] omniAggregationTypes = {VecType.LONG, VecType.LONG};
         AggType[] omniAggregator = {AggType.SUM, AggType.SUM};
         VecType[] omniAggReturnTypes = {VecType.LONG, VecType.LONG};
+        List<Symbol> groupBySymbols=new ArrayList<>();
+        groupBySymbols.add(new Symbol("groupby1"));
+        groupBySymbols.add(new Symbol("groupby2"));
+        List<Symbol> aggregationOutputSymbols=new ArrayList<>();
+        aggregationOutputSymbols.add(new Symbol("sum1"));
+        aggregationOutputSymbols.add(new Symbol("sum2"));
+        ImmutableMap.Builder<Symbol, Integer> outputMappings = new ImmutableMap.Builder<>();
+        outputMappings.put(new Symbol("groupby1"), 1);
+        outputMappings.put(new Symbol("groupby2"), 2);
+        outputMappings.put(new Symbol("sum1"), 3);
+        outputMappings.put(new Symbol("sum2"), 4);
+
 
 //        expected
         DriverContext driverContext = createDriverContext(Integer.MAX_VALUE);
@@ -166,16 +175,17 @@ public class TestHashAggregationOmniOperatorV2
         }
         MaterializedResult expected = expectedBuilder.build();
 
-        ExecutorService service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(threadNum));
+        ExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
         ArrayList<ListenableFuture<List<Page>>> futureArrayList = new ArrayList<>();
         List<List<Page>> pagesList = new ArrayList<>();
         for (int i = 0; i < threadNum; i++) {
             int id = i + 1;
+//            System.out.println("build page start");
+            List<Page> input = builderPage();
+//            System.out.println("build page end");
 
-            HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes);
-
-            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(hashAggregationOmniV2OperatorFactory, driverContext, input, false));
-//            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(getOriginalAggFactory(), driverContext, input, false));
+            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(getAggregationOmniV2OperatorFactory(omniTotalChannels, omniGrouByChannels, omniGroupByTypes,groupBySymbols, omniAggregationChannels, omniAggregationTypes, aggregationOutputSymbols,omniAggregator, omniAggReturnTypes, outputMappings,id), driverContext, input, false));
+//            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> {toPages(getOriginalAggFactory(id), driverContext, input, false);});
             futureArrayList.add(submit);
         }
 
@@ -185,13 +195,12 @@ public class TestHashAggregationOmniOperatorV2
         for (int i = 0; i < pagesList.size(); i++) {
             assertPagesEqualIgnoreOrder(driverContext, pagesList.get(i), expected, false, Optional.empty());
         }
-//        System.out.println("all finished");
-//        try {
-//            Thread.sleep(10000);
-//        }
-//        catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
+    }
+
+    @NotNull
+    private HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory getAggregationOmniV2OperatorFactory(int omniTotalChannels, int[] omniGrouByChannels, VecType[] omniGroupByTypes, List<Symbol> groupBySymbols, int[] omniAggregationChannels, VecType[] omniAggregationTypes, List<Symbol> aggregationOutputSymbols, AggType[] omniAggregator, VecType[] omniAggReturnTypes, ImmutableMap.Builder<Symbol, Integer> outputMappings, int id)
+    {
+        return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), omniTotalChannels, omniGrouByChannels, omniGroupByTypes,groupBySymbols,omniAggregationChannels, omniAggregationTypes, aggregationOutputSymbols,omniAggregator, omniAggReturnTypes,outputMappings);
     }
 
     private void waitAllTaskFinished(ArrayList<ListenableFuture<List<Page>>> futureArrayList, List<List<Page>> pagesList)
@@ -222,18 +231,18 @@ public class TestHashAggregationOmniOperatorV2
 
     protected static final JoinCompiler JOIN_COMPILER = new JoinCompiler(createTestMetadataManager());
 
-    private HashAggregationOperator.HashAggregationOperatorFactory getOriginalAggFactory()
+    private HashAggregationOperator.HashAggregationOperatorFactory getOriginalAggFactory(int id)
     {
-        InternalAggregationFunction doubleSum = metadata.getAggregateFunctionImplementation(
+        InternalAggregationFunction bigintSum = metadata.getAggregateFunctionImplementation(
                 new Signature("sum", AGGREGATE, BIGINT.getTypeSignature(), BIGINT.getTypeSignature()));
         HashAggregationOperator.HashAggregationOperatorFactory aggregationOperatorFactory = new HashAggregationOperator.HashAggregationOperatorFactory(
-                1,
-                new PlanNodeId("test"),
+                id,
+                new PlanNodeId(String.valueOf(id)),
                 ImmutableList.of(BIGINT, BIGINT),
                 Ints.asList(0, 1),
                 ImmutableList.of(),
                 AggregationNode.Step.SINGLE,
-                ImmutableList.of(doubleSum.bind(ImmutableList.of(2), Optional.empty()), doubleSum.bind(ImmutableList.of(3), Optional.empty())),
+                ImmutableList.of(bigintSum.bind(ImmutableList.of(2), Optional.empty()), bigintSum.bind(ImmutableList.of(3), Optional.empty())),
                 Optional.empty(),
                 Optional.empty(),
                 100_000,
@@ -250,5 +259,86 @@ public class TestHashAggregationOmniOperatorV2
                 .build()
                 .addPipelineContext(0, true, true, false)
                 .addDriverContext();
+    }
+
+    @Test(invocationCount = 10)
+    public void testHashAggregationWithDiffLayout()
+    {
+        int omniTotalChannels = 4;
+        int[] omniGrouByChannels = {2, 3};
+        VecType[] omniGroupByTypes = {VecType.LONG, VecType.LONG};
+        int[] omniAggregationChannels = {0, 1};
+        VecType[] omniAggregationTypes = {VecType.LONG, VecType.LONG};
+        AggType[] omniAggregator = {AggType.SUM, AggType.SUM};
+        VecType[] omniAggReturnTypes = {VecType.LONG, VecType.LONG};
+        List<Symbol> groupBySymbols=new ArrayList<>();
+        groupBySymbols.add(new Symbol("groupby1"));
+        groupBySymbols.add(new Symbol("groupby2"));
+        List<Symbol> aggregationOutputSymbols=new ArrayList<>();
+        aggregationOutputSymbols.add(new Symbol("sum1"));
+        aggregationOutputSymbols.add(new Symbol("sum2"));
+        ImmutableMap.Builder<Symbol, Integer> outputMappings = new ImmutableMap.Builder<>();
+        outputMappings.put(new Symbol("groupby1"), 1);
+        outputMappings.put(new Symbol("groupby2"), 2);
+        outputMappings.put(new Symbol("sum1"), 3);
+        outputMappings.put(new Symbol("sum2"), 4);
+
+        DriverContext driverContext = createDriverContext(Integer.MAX_VALUE);
+        MaterializedResult.Builder expectedBuilder = resultBuilder(driverContext.getSession(), BIGINT, BIGINT, BIGINT, BIGINT);
+        long sum = totalPageCount * pageDistinctValueRepeatCount;
+        for (int i = 0; i < pageDistinctCount; i++) {
+            expectedBuilder.row((long) i, (long) i, sum, sum);
+        }
+        MaterializedResult expected = expectedBuilder.build();
+
+        ExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
+        ArrayList<ListenableFuture<List<Page>>> futureArrayList = new ArrayList<>();
+        List<List<Page>> pagesList = new ArrayList<>();
+        for (int i = 0; i < threadNum; i++) {
+            int id = i + 1;
+            List<Page> input = builderPageWithDiffLayout();
+
+            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(getAggregationOmniV2OperatorFactory(omniTotalChannels, omniGrouByChannels, omniGroupByTypes,groupBySymbols, omniAggregationChannels, omniAggregationTypes, aggregationOutputSymbols,omniAggregator, omniAggReturnTypes, outputMappings,id), driverContext, input, false));
+            futureArrayList.add(submit);
+        }
+
+        waitAllTaskFinished(futureArrayList, pagesList);
+
+        assertEquals(pagesList.size(), threadNum);
+        for (int i = 0; i < pagesList.size(); i++) {
+            assertPagesEqualIgnoreOrder(driverContext, pagesList.get(i), expected, false, Optional.empty());
+        }
+    }
+
+    private List<Page> builderPageWithDiffLayout()
+    {
+        List<Type> dataTypes = new ArrayList<>();
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+
+        List<Page> inputPages = new ArrayList<>();
+        for (int k = 0; k < totalPageCount; k++) {
+            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
+            BlockBuilder group1 = pb.getBlockBuilder(2);
+            BlockBuilder group2 = pb.getBlockBuilder(3);
+            BlockBuilder sum1 = pb.getBlockBuilder(0);
+            BlockBuilder sum2 = pb.getBlockBuilder(1);
+
+            for (int i = 0; i < pageDistinctCount; i++) {
+                for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
+                    group1.writeLong(i);
+                    group2.writeLong(i);
+                    sum1.writeLong(1);
+                    sum2.writeLong(1);
+                    pb.declarePosition();
+                }
+            }
+            Page build = pb.build();
+
+            inputPages.add(build);
+        }
+        return inputPages;
     }
 }
