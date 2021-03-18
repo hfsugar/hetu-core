@@ -105,7 +105,6 @@ public class OrderByOmniOperator
     private final List<Type> sourceTypes;
     private final JniWrapper jniWrapper;
     private final long sortAddress;
-    private long valueAddressesAddr;
     private Iterator<Optional<Page>> sortedPages = null;
     private State state = State.NEEDS_INPUT;
 
@@ -176,10 +175,10 @@ public class OrderByOmniOperator
 
     @Override
     public void addInput(Page page) {
-        //long start = System.currentTimeMillis();
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
         requireNonNull(page, "page is null");
 
+//        long start = System.currentTimeMillis();
         int channelCount = page.getChannelCount();
         ByteBuffer[] buffers = new ByteBuffer[channelCount];
         long[] inputAddrs = new long[channelCount];
@@ -194,10 +193,10 @@ public class OrderByOmniOperator
         ByteBuffer nullBuffer = intVec.getData();
         long nullAddr = ((DirectBuffer)nullBuffer).address();
 
-        //System.out.println("before add Table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
+//        System.out.println("OrderByOmniOperator before add Table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
         // transform page to void **data
         jniWrapper.addTable(sortAddress, inputAddrs, nullAddr, channelCount, page.getPositionCount());
-        //System.out.println("after add table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
+//        System.out.println("OrderByOmniOperator after add table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
     }
 
     @Override
@@ -208,9 +207,9 @@ public class OrderByOmniOperator
         }
 
         if (sortedPages == null) {
-            //long start = System.currentTimeMillis();
-            OMResult result = jniWrapper.getResult(sortAddress, valueAddressesAddr);
-            //System.out.println("Ger result elapsed time " + (System.currentTimeMillis() - start) + " ms");
+//            long start = System.currentTimeMillis();
+            OMResult result = jniWrapper.getResult(sortAddress);
+//            System.out.println("OrderByOmniOperator Get result elapsed time " + (System.currentTimeMillis() - start) + " ms");
             Block[] blocks = getBlocks(result);
 
             List<Type> outputTypes = new ArrayList<>();
@@ -220,10 +219,10 @@ public class OrderByOmniOperator
 
             Iterator<Page> sortedPagesIndex = getSortedPages(outputTypes, blocks, blocks[0].getPositionCount());
             sortedPages = transform(sortedPagesIndex, Optional::of);
-            //System.out.println("Get sorted pages elapsed time " + (System.currentTimeMillis() - start) + " ms");
+//            System.out.println("OrderByOmniOperator Get sorted pages elapsed time " + (System.currentTimeMillis() - start) + " ms");
         }
 
-        //long start1 = System.currentTimeMillis();
+//        long start1 = System.currentTimeMillis();
         if (!sortedPages.hasNext()) {
             state = State.FINISHED;
             return null;
@@ -238,7 +237,7 @@ public class OrderByOmniOperator
         for (int i = 0; i < outputChannels.length; i++) {
             blocks[i] = nextPage.getBlock(i);
         }
-        //System.out.println("Get output elapsed time " + (System.currentTimeMillis() - start1) + " ms");
+//        System.out.println("OrderByOmniOperator Get output elapsed time " + (System.currentTimeMillis() - start1) + " ms");
         return new Page(nextPage.getPositionCount(), blocks);
     }
 
@@ -259,10 +258,10 @@ public class OrderByOmniOperator
                     // TODO: this should be asynchronous
                 }
             }
-            //long start = System.currentTimeMillis();
-            valueAddressesAddr = jniWrapper.sort(sortAddress);
-            //long elapsed = System.currentTimeMillis() - start;
-            //System.out.println("OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
+//            long start = System.currentTimeMillis();
+              jniWrapper.sort(sortAddress);
+//            long elapsed = System.currentTimeMillis() - start;
+//            System.out.println("OrderByOmniOperator OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
         }
     }
 
