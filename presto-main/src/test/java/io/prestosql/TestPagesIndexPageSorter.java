@@ -18,25 +18,60 @@ import com.google.common.primitives.Ints;
 import io.prestosql.operator.PagesIndex;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PageBuilder;
+import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.block.SortOrder;
 import io.prestosql.spi.type.Type;
 import io.prestosql.testing.MaterializedResult;
+import nova.hetu.omnicache.vector.IntVec;
+import nova.hetu.omnicache.vector.Vec;
 import org.testng.annotations.Test;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import static io.prestosql.SessionTestUtils.TEST_SESSION;
 import static io.prestosql.operator.OperatorAssertion.toMaterializedResult;
 import static io.prestosql.spi.block.SortOrder.ASC_NULLS_FIRST;
+import static io.prestosql.spi.block.SortOrder.ASC_NULLS_LAST;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.DoubleType.DOUBLE;
+import static io.prestosql.spi.type.IntegerType.INTEGER;
 import static io.prestosql.spi.type.VarcharType.VARCHAR;
 import static org.testng.Assert.assertEquals;
 
 public class TestPagesIndexPageSorter
 {
     private static final PagesIndexPageSorter sorter = new PagesIndexPageSorter(new PagesIndex.TestingFactory(false));
+
+    @Test
+    public void testPageSorterPerformance()
+    {
+        List<Type> types = ImmutableList.of(INTEGER, INTEGER);
+        List<Integer> sortChannels = Ints.asList(0);
+        List<SortOrder> sortOrders = ImmutableList.of(ASC_NULLS_LAST);
+
+        List<Page> inputPages = new ArrayList<>();
+        int totalPageCount = 10;
+        int pageDistinctCount = 4;
+        int pageDistinctValueRepeatCount = 250000;
+        for (int i = 0; i < totalPageCount; i++) {
+            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, types);
+            BlockBuilder block1 = pb.getBlockBuilder(0);
+            BlockBuilder block2 = pb.getBlockBuilder(1);
+            for (int j = 0; j < pageDistinctCount; j++) {
+                for (int k = 0; k < pageDistinctValueRepeatCount; k++) {
+                    block1.writeInt(j);
+                    block2.writeInt(j);
+                    pb.declarePosition();
+                }
+            }
+            Page page = pb.build();
+            inputPages.add(page);
+        }
+
+        sorter.sort(types, inputPages, sortChannels, sortOrders, 10000000);
+    }
 
     @Test
     public void testPageSorter()

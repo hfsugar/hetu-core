@@ -16,6 +16,7 @@ import nova.hetu.omnicache.vector.DoubleVec;
 import nova.hetu.omnicache.vector.IntVec;
 import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.Vec;
+import sun.nio.ch.DirectBuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -175,25 +176,28 @@ public class OrderByOmniOperator
 
     @Override
     public void addInput(Page page) {
+        //long start = System.currentTimeMillis();
         checkState(state == State.NEEDS_INPUT, "Operator is already finishing");
         requireNonNull(page, "page is null");
 
         int channelCount = page.getChannelCount();
-        Vec[] inputData = new Vec[channelCount];
-        int[][] nulls = new int[channelCount][];
-        for (int i = 0; i < channelCount; i++) {
-            inputData[i] = page.getBlock(i).getValues();
-            nulls[i] = new int[inputData[i].size()];
-            Arrays.fill(nulls[i], 0);
-        }
-
         ByteBuffer[] buffers = new ByteBuffer[channelCount];
-        for (int idx = 0; idx < buffers.length; idx++) {
-            buffers[idx] = inputData[idx].getData();
+        long[] inputAddrs = new long[channelCount];
+
+        for (int i = 0; i < channelCount; i++) {
+            Vec vec = page.getBlock(i).getValues();
+            buffers[i] = vec.getData();
+            inputAddrs[i] = ((DirectBuffer)buffers[i]).address();
         }
 
+        IntVec intVec = new IntVec(page.getPositionCount() * channelCount); // the null values for n columns
+        ByteBuffer nullBuffer = intVec.getData();
+        long nullAddr = ((DirectBuffer)nullBuffer).address();
+
+        //System.out.println("before add Table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
         // transform page to void **data
-        jniWrapper.addTable(sortAddress, buffers, nulls, channelCount, page.getPositionCount());
+        jniWrapper.addTable(sortAddress, inputAddrs, nullAddr, channelCount, page.getPositionCount());
+        //System.out.println("after add table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
     }
 
     @Override
@@ -204,7 +208,9 @@ public class OrderByOmniOperator
         }
 
         if (sortedPages == null) {
+            //long start = System.currentTimeMillis();
             OMResult result = jniWrapper.getResult(sortAddress, valueAddressesAddr);
+            //System.out.println("Ger result elapsed time " + (System.currentTimeMillis() - start) + " ms");
             Block[] blocks = getBlocks(result);
 
             List<Type> outputTypes = new ArrayList<>();
@@ -214,8 +220,10 @@ public class OrderByOmniOperator
 
             Iterator<Page> sortedPagesIndex = getSortedPages(outputTypes, blocks, blocks[0].getPositionCount());
             sortedPages = transform(sortedPagesIndex, Optional::of);
+            //System.out.println("Get sorted pages elapsed time " + (System.currentTimeMillis() - start) + " ms");
         }
 
+        //long start1 = System.currentTimeMillis();
         if (!sortedPages.hasNext()) {
             state = State.FINISHED;
             return null;
@@ -230,6 +238,7 @@ public class OrderByOmniOperator
         for (int i = 0; i < outputChannels.length; i++) {
             blocks[i] = nextPage.getBlock(i);
         }
+        //System.out.println("Get output elapsed time " + (System.currentTimeMillis() - start1) + " ms");
         return new Page(nextPage.getPositionCount(), blocks);
     }
 
@@ -250,10 +259,10 @@ public class OrderByOmniOperator
                     // TODO: this should be asynchronous
                 }
             }
-            long start = System.currentTimeMillis();
+            //long start = System.currentTimeMillis();
             valueAddressesAddr = jniWrapper.sort(sortAddress);
-            long elapsed = System.currentTimeMillis() - start;
-            System.out.println("OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
+            //long elapsed = System.currentTimeMillis() - start;
+            //System.out.println("OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
         }
     }
 

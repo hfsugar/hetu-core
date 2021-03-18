@@ -43,7 +43,10 @@ public class PagesIndexPageSorter
     {
         PagesIndex pagesIndex = pagesIndexFactory.newPagesIndex(types, expectedPositions);
         pages.forEach(pagesIndex::addPage);
+        long start = System.currentTimeMillis();
         pagesIndex.sort(sortChannels, sortOrders);
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.println("pagesIdnex sort elapsed time : " + elapsed + " ms");
 
         return pagesIndex.getValueAddresses().toLongArray(null);
     }

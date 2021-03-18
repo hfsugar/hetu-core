@@ -30,7 +30,7 @@ public class OrderByOmniV2Benchmark
     static long buildPageTime = 0;
     static int totalPageCount = 10;
     static int pageDistinctCount = 4;
-    static int pageDistinctValueRepeatCount = 2500000;
+    static int pageDistinctValueRepeatCount = 250000;
 
     static Iterator<Page> inputPagesIterator;
 
