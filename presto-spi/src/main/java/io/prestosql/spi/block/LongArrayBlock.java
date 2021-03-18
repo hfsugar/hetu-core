@@ -63,6 +63,7 @@ public class LongArrayBlock
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
+        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -72,19 +73,9 @@ public class LongArrayBlock
             throw new IllegalArgumentException("values length is less than positionCount");
         }
 
-        if (arrayOffset > 0) {
-            this.values = new LongVec(positionCount);
-            for (int idx = arrayOffset; idx < arrayOffset + positionCount; idx++) {
-                this.values.set(idx - arrayOffset, values[idx]);
-            }
-        }
-        else {
-            this.values = new LongVec(positionCount);///
-            for (int idx = 0; idx < positionCount; idx++) {
-                this.values.set(idx, values[idx]);
-            }
-        }
-        this.arrayOffset = 0;
+        //TODO:Currently OmniCodegen Vec is not support offset,and reuse same vec,future try to avoid copy here
+        this.values = new LongVec(positionCount);
+        this.values.getData().asLongBuffer().put(values, arrayOffset, positionCount);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -100,6 +91,7 @@ public class LongArrayBlock
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
+        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -109,13 +101,7 @@ public class LongArrayBlock
             throw new IllegalArgumentException("values length is less than positionCount");
         }
 
-        if (arrayOffset > 0) {
-            this.values = longVec.slice(arrayOffset, arrayOffset + positionCount);
-        }
-        else {
-            this.values = longVec;
-        }
-        this.arrayOffset = 0;
+        this.values = longVec.slice(arrayOffset, arrayOffset + positionCount);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -167,9 +153,7 @@ public class LongArrayBlock
     {
         // TODO: try to avoid copy here
         long[] valuesArray = new long[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            valuesArray[i] = values.get(i);
-        }
+        values.getData().asLongBuffer().get(valuesArray);
         consumer.accept(valuesArray, sizeOf(valuesArray));
         if (valueIsNull != null) {
             consumer.accept(valueIsNull, sizeOf(valueIsNull));

@@ -67,10 +67,9 @@ public class DoubleArrayBlock
         if (values.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
+        //TODO:Currently OmniCodegen Vec is not support offset,and reuse same vec,future try to avoid copy here
         this.values = new DoubleVec(values.length);
-        for (int i = 0; i < values.length; i++) {
-            this.values.set(i, values[i]);
-        }
+        this.values.getData().asDoubleBuffer().put(values, 0, values.length);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -95,7 +94,8 @@ public class DoubleArrayBlock
         if (values.size() - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
-        this.values = values;
+
+        this.values = values.slice(arrayOffset, arrayOffset + positionCount);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -107,7 +107,8 @@ public class DoubleArrayBlock
     }
 
     @Override
-    public DoubleVec getValues(){
+    public DoubleVec getValues()
+    {
         return values;
     }
 
@@ -146,9 +147,7 @@ public class DoubleArrayBlock
     {
         // TODO: try to avoid copy here
         double[] valuesArray = new double[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            valuesArray[i] = values.get(i);
-        }
+        values.getData().asDoubleBuffer().get(valuesArray);
         consumer.accept(valuesArray, sizeOf(valuesArray));
         if (valueIsNull != null) {
             consumer.accept(valueIsNull, sizeOf(valueIsNull));
