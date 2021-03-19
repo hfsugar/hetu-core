@@ -20,13 +20,13 @@ import sun.nio.ch.DirectBuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.*;
-import java.util.function.IntUnaryOperator;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterators.transform;
-import static io.prestosql.operator.SyntheticAddress.decodePosition;
-import static io.prestosql.operator.SyntheticAddress.decodeSliceIndex;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -150,16 +150,16 @@ public class OrderByOmniOperator
     {
         String base = type.getTypeSignature().getBase();
         if (base.equals(StandardTypes.INTEGER)) {
-            return 0;
-        }
-        else if (base.equals(StandardTypes.BIGINT)) {
             return 1;
         }
-        else if (base.equals(StandardTypes.DOUBLE)) {
+        else if (base.equals(StandardTypes.BIGINT)) {
             return 2;
         }
+        else if (base.equals(StandardTypes.DOUBLE)) {
+            return 3;
+        }
         else {
-            return 0;
+            return 1;
         }
     }
 
