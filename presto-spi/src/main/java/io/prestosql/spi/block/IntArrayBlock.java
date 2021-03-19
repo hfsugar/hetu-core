@@ -68,10 +68,9 @@ public class IntArrayBlock
         if (values.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
+        //TODO:Currently OmniCodegen Vec is not support offset,and reuse same vec,future try to avoid copy here
         this.values = new IntVec(values.length);
-        for (int i = 0; i < values.length; i++) {
-            this.values.set(i, values[i]);
-        }
+        this.values.getData().asIntBuffer().put(values, 0, values.length);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -88,6 +87,7 @@ public class IntArrayBlock
             throw new IllegalArgumentException("arrayOffset is negative");
         }
         this.arrayOffset = arrayOffset;
+
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -96,7 +96,7 @@ public class IntArrayBlock
         if (values.size() - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
-        this.values = values;
+        this.values = values.slice(arrayOffset, arrayOffset + positionCount);
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -108,7 +108,8 @@ public class IntArrayBlock
     }
 
     @Override
-    public IntVec getValues(){
+    public IntVec getValues()
+    {
         return values;
     }
 
@@ -147,9 +148,7 @@ public class IntArrayBlock
     {
         // TODO: try to avoid copy here
         int[] valuesArray = new int[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            valuesArray[i] = values.get(i);
-        }
+        values.getData().asIntBuffer().get(valuesArray);
         consumer.accept(valuesArray, sizeOf(valuesArray));
         if (valueIsNull != null) {
             consumer.accept(valueIsNull, sizeOf(valueIsNull));
