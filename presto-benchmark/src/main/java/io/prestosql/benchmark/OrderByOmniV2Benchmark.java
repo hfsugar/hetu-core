@@ -48,6 +48,7 @@ public class OrderByOmniV2Benchmark
                 "orderstatus",
                 "totalprice");
         return ImmutableList.of(tableScanOepratorFactory, getOrderByOmniFactory());
+//        return ImmutableList.of(tableScanOepratorFactory, getOrderByFactory());
     }
 
     public static void main(String[] args)

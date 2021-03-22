@@ -223,9 +223,9 @@ public class OrderByOperator
                 }
             }
 
-            //long start = System.currentTimeMillis();
+//            long start = System.currentTimeMillis();
             pageIndex.sort(sortChannels, sortOrder);
-            //System.out.println("PageIndex sort elapsed time : " + (System.currentTimeMillis() - start) + " ms");
+//            System.out.println("OrderByOperator PageIndex sort elapsed time : " + (System.currentTimeMillis() - start) + " ms");
             Iterator<Page> sortedPagesIndex = pageIndex.getSortedPages();
 
             List<WorkProcessor<Page>> spilledPages = getSpilledPages();
@@ -235,8 +235,8 @@ public class OrderByOperator
             else {
                 sortedPages = mergeSpilledAndMemoryPages(spilledPages, sortedPagesIndex).yieldingIterator();
             }
-            //long elapsed = System.currentTimeMillis() - start;
-            //System.out.println("finish elapsed time : " + elapsed + " ms");
+//            long elapsed = System.currentTimeMillis() - start;
+//            System.out.println("OrderByOperator finish elapsed time : " + elapsed + " ms");
         }
     }
 
@@ -259,10 +259,10 @@ public class OrderByOperator
         requireNonNull(page, "page is null");
         checkSuccess(spillInProgress, "spilling failed");
 
-        //long start = System.currentTimeMillis();
+//        long start = System.currentTimeMillis();
         pageIndex.addPage(page);
-        //long elapsed = System.currentTimeMillis() - start;
-        //System.out.println("PagesIndex addPage() elapsed time : " + elapsed + " ms");
+//        long elapsed = System.currentTimeMillis() - start;
+//        System.out.println("OrderByOperator PagesIndex addPage() elapsed time : " + elapsed + " ms");
         updateMemoryUsage();
     }
 
@@ -275,7 +275,7 @@ public class OrderByOperator
         }
 
         verify(sortedPages != null, "sortedPages is null");
-        //long start =System.currentTimeMillis();
+//        long start =System.currentTimeMillis();
         if (!sortedPages.hasNext()) {
             state = State.FINISHED;
             return null;
@@ -290,8 +290,8 @@ public class OrderByOperator
         for (int i = 0; i < outputChannels.length; i++) {
             blocks[i] = nextPage.getBlock(outputChannels[i]);
         }
-        //long elapsed = System.currentTimeMillis() - start;
-        //System.out.println("Get output elapsed time : " + elapsed + " ms");
+//        long elapsed = System.currentTimeMillis() - start;
+//        System.out.println("OrderByOperator Get output elapsed time : " + elapsed + " ms");
         return new Page(nextPage.getPositionCount(), blocks);
     }
 
