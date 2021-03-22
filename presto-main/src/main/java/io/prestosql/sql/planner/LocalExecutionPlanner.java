@@ -252,6 +252,7 @@ import static io.prestosql.SystemSessionProperties.getDynamicFilteringWaitTime;
 import static io.prestosql.SystemSessionProperties.getFilterAndProjectMinOutputPageRowCount;
 import static io.prestosql.SystemSessionProperties.getFilterAndProjectMinOutputPageSize;
 import static io.prestosql.SystemSessionProperties.getOmniCacheEnabled;
+import static io.prestosql.SystemSessionProperties.getOmniFilterEnabled;
 import static io.prestosql.SystemSessionProperties.getSpillOperatorThresholdReuseExchange;
 import static io.prestosql.SystemSessionProperties.getTaskConcurrency;
 import static io.prestosql.SystemSessionProperties.getTaskWriterCount;
@@ -1359,8 +1360,9 @@ public class LocalExecutionPlanner
 
             try {
                 if (columns != null) {
-                    Supplier<CursorProcessor> cursorProcessor = expressionCompiler.compileCursorProcessor(translatedFilter, translatedProjections, sourceNode.getId());
-                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId));
+                    //TODO: Need Support RecordCursor Filter And Project Omni Codegen
+                    Supplier<CursorProcessor> cursorProcessor = expressionCompiler.compileCursorProcessor(translatedFilter, translatedProjections, sourceNode.getId(), getOmniFilterEnabled(session));
+                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session));
 
                     boolean spillEnabled = isSpillEnabled(session) && isSpillReuseExchange(session);
                     int spillerThreshold = getSpillOperatorThresholdReuseExchange(session) * 1024 * 1024; //convert from MB to bytes
@@ -1387,7 +1389,7 @@ public class LocalExecutionPlanner
                     return new PhysicalOperation(operatorFactory, outputMappings, context, stageExecutionDescriptor.isScanGroupedExecution(sourceNode.getId()) ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
                 }
                 else {
-                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId));
+                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session));
 
                     OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(
                             context.getNextOperatorId(),
@@ -3117,6 +3119,7 @@ public class LocalExecutionPlanner
                 throw new UnsupportedOperationException("unsupported omni data type by OmniRuntime: " + signatureBaseType);
         }
     }
+
     private List<VecType[]> getInAndOutputVecTypes(int[] omniGrouByChannels, VecType[] omniGroupByTypes, VecType[] omniAggregationTypes, VecType[] omniAggReturnTypes)
     {
         List<VecType[]> inAndOutputVecTypes = new ArrayList<>();
