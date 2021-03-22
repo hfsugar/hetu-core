@@ -14,7 +14,6 @@
 package io.prestosql.benchmark;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Ints;
 import io.airlift.units.DataSize;
 import io.prestosql.operator.DriverContext;
@@ -32,7 +31,6 @@ import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.connector.ConnectorPageSource;
 import io.prestosql.spi.function.Signature;
 import io.prestosql.spi.type.Type;
-import io.prestosql.sql.planner.Symbol;
 import io.prestosql.sql.planner.plan.AggregationNode;
 import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.LocalQueryRunner;
@@ -47,6 +45,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -61,8 +60,8 @@ public class HashAggregationOmniV2Benchmark
     public static Page inputPage;
     public static Iterator<Page> inputPagesIterator;
     private final InternalAggregationFunction longSum;
-    static int warmCycle=5;
-    static int runCycle=20;
+    static int warmCycle = 5;
+    static int runCycle = 100;
     int runningCycle;
 
     public HashAggregationOmniV2Benchmark(LocalQueryRunner localQueryRunner)
@@ -76,7 +75,7 @@ public class HashAggregationOmniV2Benchmark
     static int pageDistinctCount = 4;
     static int pageDistinctValueRepeatCount = 250;
     static int totalPageCount = 2000;
-    static AtomicLong buildPageTime=new AtomicLong(0);
+    static AtomicLong buildPageTime = new AtomicLong(0);
 
     public static void main(String[] args)
     {
@@ -85,7 +84,7 @@ public class HashAggregationOmniV2Benchmark
         LocalQueryRunner localQueryRunner = createLocalQueryRunner();
 
         new HashAggregationOmniV2Benchmark(localQueryRunner).runBenchmark(new SimpleLineBenchmarkResultWriter(System.out));
-        System.out.println("average build page times :"+buildPageTime.get()/runCycle);
+        System.out.println("average build page times :" + buildPageTime.get() / runCycle);
     }
 
     @Override
@@ -93,9 +92,8 @@ public class HashAggregationOmniV2Benchmark
     {
         OperatorFactory tableScanOperatorFactory = createOmniCacheTableScanOperator(0, new PlanNodeId("test"), "orders", "orderstatus", "totalprice");
 
-
-        return ImmutableList.of(tableScanOperatorFactory, getHashAggregationOmniV2OperatorFactory());
-//        return ImmutableList.of(tableScanOperatorFactory,  getHashAggregationOmniFactory());
+//        return ImmutableList.of(tableScanOperatorFactory, getHashAggregationOmniV2OperatorFactory());
+        return ImmutableList.of(tableScanOperatorFactory, getHashAggregationOmniFactory());
 //        return ImmutableList.of(tableScanOperatorFactory, getOriginalAggFactory());
     }
 
@@ -113,7 +111,7 @@ public class HashAggregationOmniV2Benchmark
                 "{k0, k1, sum_1, sum_2}";
         OmniRuntime omniRuntime = new OmniRuntime();
         String compileID = omniRuntime.compile(weldIR);
-     return new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(1, new PlanNodeId(String.valueOf(1)), omniRuntime, Collections.singletonList(compileID));
+        return new HashAggregationOmniOperator.HashAggregationOmniOperatorFactory(1, new PlanNodeId(String.valueOf(1)), omniRuntime, Collections.singletonList(compileID));
     }
 
     @NotNull
@@ -126,19 +124,13 @@ public class HashAggregationOmniV2Benchmark
         VecType[] omniAggregationTypes = {VecType.LONG, VecType.LONG};
         AggType[] omniAggregator = {AggType.SUM, AggType.SUM};
         VecType[] omniAggReturnTypes = {VecType.LONG, VecType.LONG};
-        List<Symbol> groupBySymbols=new ArrayList<>();
-        groupBySymbols.add(new Symbol("groupby1"));
-        groupBySymbols.add(new Symbol("groupby2"));
-        List<Symbol> aggregationOutputSymbols=new ArrayList<>();
-        aggregationOutputSymbols.add(new Symbol("sum1"));
-        aggregationOutputSymbols.add(new Symbol("sum2"));
-        ImmutableMap.Builder<Symbol, Integer> outputMappings = new ImmutableMap.Builder<>();
-        outputMappings.put(new Symbol("groupby1"), 1);
-        outputMappings.put(new Symbol("groupby2"), 2);
-        outputMappings.put(new Symbol("sum1"), 3);
-        outputMappings.put(new Symbol("sum2"), 4);
-//
-        HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(1, new PlanNodeId("1"), omniTotalChannels, omniGrouByChannels, omniGroupByTypes,groupBySymbols, omniAggregationChannels, omniAggregationTypes, aggregationOutputSymbols,omniAggregator, omniAggReturnTypes,outputMappings);
+        List<VecType[]> inAndOutputTypes = new ArrayList<>();
+        inAndOutputTypes.add(new VecType[] {VecType.LONG, VecType.LONG, VecType.LONG, VecType.LONG});
+        inAndOutputTypes.add(new VecType[] {VecType.LONG, VecType.LONG, VecType.LONG, VecType.LONG});
+        int[] outputLayout = new int[] {0, 1, 2, 3};
+
+        long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
+        HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(1, new PlanNodeId("1"), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
         return hashAggregationOmniV2OperatorFactory;
     }
 
@@ -195,8 +187,8 @@ public class HashAggregationOmniV2Benchmark
                 long start = System.currentTimeMillis();
                 builderPage();
                 runningCycle++;
-                if (runningCycle>5) {
-                    buildPageTime.addAndGet(System.currentTimeMillis()-start);
+                if (runningCycle > 5) {
+                    buildPageTime.addAndGet(System.currentTimeMillis() - start);
                 }
 
                 ConnectorPageSource pageSource = createOmniCachePageSource();//localQueryRunner.getPageSourceManager().createPageSource(session, split, tableHandle, columnHandles, Optional.empty());
@@ -249,8 +241,6 @@ public class HashAggregationOmniV2Benchmark
 
         inputPagesIterator = inputPages.iterator();
     }
-
-
 
     private ConnectorPageSource createOmniCachePageSource()
     {
