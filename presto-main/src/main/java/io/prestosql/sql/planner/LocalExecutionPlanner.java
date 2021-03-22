@@ -55,7 +55,6 @@ import io.prestosql.operator.ExchangeOperator.ExchangeOperatorFactory;
 import io.prestosql.operator.ExplainAnalyzeOperator.ExplainAnalyzeOperatorFactory;
 import io.prestosql.operator.FilterAndProjectOperator;
 import io.prestosql.operator.GroupIdOperator;
-import io.prestosql.operator.HashAggregationOmniOperator;
 import io.prestosql.operator.HashAggregationOmniOperatorV2;
 import io.prestosql.operator.HashAggregationOperator.HashAggregationOperatorFactory;
 import io.prestosql.operator.HashBuilderOperator.HashBuilderOperatorFactory;
@@ -209,11 +208,10 @@ import io.prestosql.sql.tree.SymbolReference;
 import io.prestosql.statestore.StateStoreProvider;
 import io.prestosql.statestore.listener.StateStoreListenerManager;
 import io.prestosql.type.FunctionType;
-import nova.hetu.omnicache.runtime.OmniRuntime;
 import nova.hetu.omnicache.vector.AggType;
-import nova.hetu.omnicache.vector.Vec;
 import nova.hetu.omnicache.vector.VecType;
 import nova.hetu.shuffle.PageProducer;
+import org.apache.commons.lang3.ArrayUtils;
 
 import javax.inject.Inject;
 
@@ -281,6 +279,7 @@ import static io.prestosql.operator.TableWriterOperator.TableWriterOperatorFacto
 import static io.prestosql.operator.WindowFunctionDefinition.window;
 import static io.prestosql.operator.unnest.UnnestOperator.UnnestOperatorFactory;
 import static io.prestosql.spi.StandardErrorCode.COMPILER_ERROR;
+import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.prestosql.spi.function.FunctionKind.SCALAR;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.TypeUtils.writeNativeValue;
@@ -3047,7 +3046,43 @@ public class LocalExecutionPlanner
             else {
                 Optional<Integer> hashChannel = hashSymbol.map(channelGetter(source));
                 if (getOmniCacheEnabled(session)) {
-                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, groupByChannels,groupByTypes,groupBySymbols,aggregationOutputSymbols,aggregations,accumulatorFactories,outputMappings);
+
+                    int groupBySize = groupByChannels.size();
+                    int aggregationSize = aggregationOutputSymbols.size();
+                    int omniTotalChannels = groupBySize + aggregationSize;
+                    int[] omniGrouByChannels = new int[groupBySize];
+                    VecType[] omniGroupByTypes = new VecType[groupBySize];
+                    for (int i = 0; i < groupBySize; i++) {
+                        omniGrouByChannels[i] = groupByChannels.get(i);
+                        omniGroupByTypes[i] = toVecType(groupByTypes.get(0).getTypeSignature().getBase());
+                    }
+
+                    int[] omniAggregationChannels = new int[aggregationSize];
+                    VecType[] omniAggregationTypes = new VecType[aggregationSize];
+                    AggType[] omniAggregator = new AggType[aggregationSize];
+                    VecType[] omniAggReturnTypes = new VecType[aggregationSize];
+                    for (int i = 0; i < aggregationSize; i++) {
+                        Signature signature = aggregations.get(aggregationOutputSymbols.get(i)).getSignature();
+                        omniAggregationChannels[i] = accumulatorFactories.get(i).getInputChannels().get(0);
+                        //aggreagtion types
+                        omniAggregationTypes[i] = toVecType(signature.getArgumentTypes().get(0).getBase());
+                        //return types
+                        omniAggReturnTypes[i] = toVecType(signature.getReturnType().getBase());
+                        //aggregator type, eg:sum,avg...
+                        switch (signature.getName()) {
+                            case "sum":
+                                omniAggregator[i] = AggType.SUM;
+                                break;
+                            default:
+                                throw new UnsupportedOperationException("unsupported Aggregator type by OmniRuntime: " + groupByTypes.get(0).getTypeSignature().getBase());
+                        }
+                    }
+
+                    List<VecType[]> inAndOutputTypes = getInAndOutputVecTypes(omniGrouByChannels, omniGroupByTypes, omniAggregationTypes, omniAggReturnTypes);
+                    int[] outputLayout = getOutputLayout(omniTotalChannels, groupBySymbols, omniGrouByChannels, aggregationOutputSymbols, omniAggregationChannels, outputMappings);
+
+                    long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
+                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
                 }
                 return new HashAggregationOperatorFactory(
                         context.getNextOperatorId(),
@@ -3069,6 +3104,68 @@ public class LocalExecutionPlanner
                         useSystemMemory);
             }
         }
+    }
+
+    private VecType toVecType(String signatureBaseType)
+    {
+        switch (signatureBaseType) {
+            case "bigint":
+                return VecType.LONG;
+            case "integer":
+                return VecType.INT;
+            default:
+                throw new UnsupportedOperationException("unsupported omni data type by OmniRuntime: " + signatureBaseType);
+        }
+    }
+    private List<VecType[]> getInAndOutputVecTypes(int[] omniGrouByChannels, VecType[] omniGroupByTypes, VecType[] omniAggregationTypes, VecType[] omniAggReturnTypes)
+    {
+        List<VecType[]> inAndOutputVecTypes = new ArrayList<>();
+        boolean groupByFirst = false;
+        for (int omniGrouByChannel : omniGrouByChannels) {
+            if (omniGrouByChannel == 0) {
+                groupByFirst = true;
+                break;
+            }
+        }
+        if (groupByFirst) {
+            inAndOutputVecTypes.add(ArrayUtils.addAll(omniGroupByTypes, omniAggregationTypes));
+            inAndOutputVecTypes.add(ArrayUtils.addAll(omniGroupByTypes, omniAggReturnTypes));
+        }
+        else {
+            inAndOutputVecTypes.add(ArrayUtils.addAll(omniAggregationTypes, omniGroupByTypes));
+            inAndOutputVecTypes.add(ArrayUtils.addAll(omniAggReturnTypes, omniGroupByTypes));
+        }
+        return inAndOutputVecTypes;
+    }
+
+    private int[] getOutputLayout(int omniTotalChannels, List<Symbol> groupBySymbols, int[] omniGrouByChannels, List<Symbol> aggregationOutputSymbols, int[] omniAggregationChannels, ImmutableMap.Builder<Symbol, Integer> outputMappings)
+    {
+        ImmutableList<Symbol> symbolImmutableList = outputMappings.build().keySet().asList();
+        int[] outputLayout = new int[omniTotalChannels];
+        for (int i = 0; i < omniTotalChannels; i++) {
+            Symbol symbol = symbolImmutableList.get(i);
+            int resultIndex = -1;
+            for (int j = 0; j < groupBySymbols.size(); j++) {
+                if (groupBySymbols.get(j).equals(symbol)) {
+                    resultIndex = omniGrouByChannels[j];
+                    break;
+                }
+            }
+            if (resultIndex == -1) {
+                for (int j = 0; j < aggregationOutputSymbols.size(); j++) {
+                    if (aggregationOutputSymbols.get(j).equals(symbol)) {
+                        resultIndex = omniAggregationChannels[j];
+                        break;
+                    }
+                }
+            }
+
+            if (resultIndex == -1) {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "HashAgg Omni operator may have wrong output layout");
+            }
+            outputLayout[i] = resultIndex;
+        }
+        return outputLayout;
     }
 
     private static List<Type> getTypes(List<Expression> expressions, Map<NodeRef<Expression>, Type> expressionTypes)

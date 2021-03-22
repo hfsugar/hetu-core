@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -450,6 +451,7 @@ public class Driver
                 // if the current operator is not finished and next operator isn't blocked and needs input...
                 if (!current.isFinished() && !getBlockedFuture(next).isPresent() && next.needsInput()) {
                     // get an output page from current operator
+
                     Page page = current.getOutput();
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
