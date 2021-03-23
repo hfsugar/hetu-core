@@ -65,8 +65,8 @@ public class OrderByOmniV2Benchmark
                 new PlanNodeId("test"),
                 ImmutableList.of(INTEGER, INTEGER),
                 Ints.asList(0, 1),
-                Ints.asList(0),
-                ImmutableList.of(ASC_NULLS_LAST));
+                Ints.asList(0, 1),
+                ImmutableList.of(ASC_NULLS_LAST, ASC_NULLS_LAST));
         return operatorFactory;
     }
 
@@ -78,8 +78,8 @@ public class OrderByOmniV2Benchmark
                 ImmutableList.of(INTEGER, INTEGER),
                 Ints.asList(0, 1),
                 100_000,
-                Ints.asList(0),
-                ImmutableList.of(ASC_NULLS_LAST),
+                Ints.asList(0, 1),
+                ImmutableList.of(ASC_NULLS_LAST, ASC_NULLS_LAST),
                 new PagesIndex.TestingFactory(false),
                 false,
                 Optional.empty(),
@@ -133,10 +133,10 @@ public class OrderByOmniV2Benchmark
 
             for (int j = 0; j < pageDistinctCount; j++) {
                 for (int k = 0; k < pageDistinctValueRepeatCount; k++) {
-                    block1.writeLong(i);
-                    block2.writeLong(i);
-                    block3.writeLong(i);
-                    block4.writeLong(i);
+                    block1.writeLong(j);
+                    block2.writeLong(j);
+                    block3.writeLong(j);
+                    block4.writeLong(j);
                     pb.declarePosition();
                 }
             }

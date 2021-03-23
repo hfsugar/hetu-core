@@ -10,13 +10,12 @@ import io.prestosql.spi.block.*;
 import io.prestosql.spi.type.StandardTypes;
 import io.prestosql.spi.type.Type;
 import io.prestosql.sql.planner.plan.PlanNodeId;
-import nova.hetu.omnicache.runtime.JniWrapper;
 import nova.hetu.omnicache.runtime.OMResult;
+import nova.hetu.omnicache.runtime.OmniOrderBy;
 import nova.hetu.omnicache.vector.DoubleVec;
 import nova.hetu.omnicache.vector.IntVec;
 import nova.hetu.omnicache.vector.LongVec;
 import nova.hetu.omnicache.vector.Vec;
-import sun.nio.ch.DirectBuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -42,7 +41,7 @@ public class OrderByOmniOperator
         private final List<Integer> outputChannels;
         private final List<Integer> sortChannels;
         private final List<SortOrder> sortOrder;
-        private final JniWrapper jniWrapper;
+        private final OmniOrderBy omniOrderBy;
         private boolean closed;
 
         public OrderByOmniOperatorFactory(
@@ -59,7 +58,7 @@ public class OrderByOmniOperator
             this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
             this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
             this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder, "sortOrder is null"));
-            this.jniWrapper = new JniWrapper();
+            this.omniOrderBy = new OmniOrderBy();
         }
 
         @Override
@@ -71,7 +70,7 @@ public class OrderByOmniOperator
                     outputChannels,
                     sortChannels,
                     sortOrder,
-                    jniWrapper);
+                    omniOrderBy);
         }
 
         @Override
@@ -103,7 +102,7 @@ public class OrderByOmniOperator
     private final LocalMemoryContext revocableMemoryContext;
     private final LocalMemoryContext localUserMemoryContext;
     private final List<Type> sourceTypes;
-    private final JniWrapper jniWrapper;
+    private final OmniOrderBy omniOrderBy;
     private final long sortAddress;
     private Iterator<Optional<Page>> sortedPages = null;
     private State state = State.NEEDS_INPUT;
@@ -113,12 +112,12 @@ public class OrderByOmniOperator
                                List<Integer> outputChannels,
                                List<Integer> sortChannels,
                                List<SortOrder> sortOrder,
-                               JniWrapper jniWrapper)
+                               OmniOrderBy omniOrderBy)
     {
         this.operatorContext = operatorContext;
         this.sourceTypes = sourceTypes;
         this.outputChannels = Ints.toArray(requireNonNull(outputChannels, "outputChannels is null"));
-        this.jniWrapper = jniWrapper;
+        this.omniOrderBy = omniOrderBy;
         this.localUserMemoryContext = operatorContext.localUserMemoryContext();
         this.revocableMemoryContext = operatorContext.localRevocableMemoryContext();
 
@@ -136,7 +135,7 @@ public class OrderByOmniOperator
             types[i] = getTypeIdx(sourceTypes.get(i));
         }
 
-        this.sortAddress = jniWrapper.allocAndInitSort(types,
+        this.sortAddress = omniOrderBy.allocAndInitSort(types,
                 sourceTypes.size(),
                 this.outputChannels,
                 this.outputChannels.length,
@@ -180,22 +179,20 @@ public class OrderByOmniOperator
 
 //        long start = System.currentTimeMillis();
         int channelCount = page.getChannelCount();
-        ByteBuffer[] buffers = new ByteBuffer[channelCount];
-        long[] inputAddrs = new long[channelCount];
+        int positionCount = page.getPositionCount();
+        Vec[] dataVecs = new Vec[channelCount];
+        Vec[] nullVecs = new Vec[channelCount];  //null vec for all columns
 
         for (int i = 0; i < channelCount; i++) {
             Vec vec = page.getBlock(i).getValues();
-            buffers[i] = vec.getData();
-            inputAddrs[i] = ((DirectBuffer)buffers[i]).address();
+            dataVecs[i] = vec;
+            IntVec nullVec = new IntVec(positionCount);
+            nullVecs[i] = nullVec;
         }
-
-        IntVec intVec = new IntVec(page.getPositionCount() * channelCount); // the null values for n columns
-        ByteBuffer nullBuffer = intVec.getData();
-        long nullAddr = ((DirectBuffer)nullBuffer).address();
 
 //        System.out.println("OrderByOmniOperator before add Table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
         // transform page to void **data
-        jniWrapper.addTable(sortAddress, inputAddrs, nullAddr, channelCount, page.getPositionCount());
+        omniOrderBy.addTable(sortAddress, dataVecs, nullVecs);
 //        System.out.println("OrderByOmniOperator after add table elapsed time : " + (System.currentTimeMillis() - start) + " ms");
     }
 
@@ -208,7 +205,7 @@ public class OrderByOmniOperator
 
         if (sortedPages == null) {
 //            long start = System.currentTimeMillis();
-            OMResult result = jniWrapper.getResult(sortAddress);
+            OMResult result = omniOrderBy.getResult(sortAddress);
 //            System.out.println("OrderByOmniOperator Get result elapsed time " + (System.currentTimeMillis() - start) + " ms");
             Block[] blocks = getBlocks(result);
 
@@ -259,7 +256,7 @@ public class OrderByOmniOperator
                 }
             }
 //            long start = System.currentTimeMillis();
-              jniWrapper.sort(sortAddress);
+            omniOrderBy.sort(sortAddress);
 //            long elapsed = System.currentTimeMillis() - start;
 //            System.out.println("OrderByOmniOperator OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
         }
