@@ -58,7 +58,6 @@ public class DoubleArrayBlock
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
-        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -74,7 +73,15 @@ public class DoubleArrayBlock
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
         }
-        this.valueIsNull = valueIsNull;
+        if (arrayOffset > 0 && valueIsNull != null) {
+            this.valueIsNull = new boolean[positionCount];
+            System.arraycopy(valueIsNull, arrayOffset, this.valueIsNull, 0, positionCount);
+        }
+        else {
+            this.valueIsNull = valueIsNull;
+        }
+
+        this.arrayOffset = 0;
 
         sizeInBytes = (Double.BYTES + Byte.BYTES) * (long) positionCount;
         retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
@@ -85,7 +92,6 @@ public class DoubleArrayBlock
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
         }
-        this.arrayOffset = arrayOffset;
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
         }
@@ -100,7 +106,15 @@ public class DoubleArrayBlock
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
         }
-        this.valueIsNull = valueIsNull;
+        if (arrayOffset > 0 && valueIsNull != null) {
+            this.valueIsNull = new boolean[positionCount];
+            System.arraycopy(valueIsNull, arrayOffset, this.valueIsNull, 0, positionCount);
+        }
+        else {
+            this.valueIsNull = valueIsNull;
+        }
+
+        this.arrayOffset = 0;
 
         sizeInBytes = (Double.BYTES + Byte.BYTES) * (long) positionCount;
         retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + values.capacity();
