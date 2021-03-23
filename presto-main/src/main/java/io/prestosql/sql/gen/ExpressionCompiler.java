@@ -76,8 +76,10 @@ public class ExpressionCompiler
     {
         return cacheStatsMBean;
     }
-
-    public Supplier<CursorProcessor> compileCursorProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Object uniqueKey)
+    public Supplier<CursorProcessor> compileCursorProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Object uniqueKey){
+        return compileCursorProcessor(filter,projections,uniqueKey,false);
+    }
+    public Supplier<CursorProcessor> compileCursorProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Object uniqueKey,boolean omniFilterEnabled)
     {
         Class<? extends CursorProcessor> cursorProcessor = cursorProcessors.getUnchecked(new CacheKey(filter, projections, uniqueKey));
         return () -> {
@@ -90,9 +92,14 @@ public class ExpressionCompiler
         };
     }
 
+    public Supplier<PageProcessor> compilePageProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Optional<String> classNameSuffix, boolean omniFilterEnabled)
+    {
+        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), omniFilterEnabled);
+    }
+
     public Supplier<PageProcessor> compilePageProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Optional<String> classNameSuffix)
     {
-        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty());
+        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), false);
     }
 
     private Supplier<PageProcessor> compilePageProcessor(
@@ -101,7 +108,17 @@ public class ExpressionCompiler
             Optional<String> classNameSuffix,
             OptionalInt initialBatchSize)
     {
-        Optional<Supplier<PageFilter>> filterFunctionSupplier = filter.map(expression -> pageFunctionCompiler.compileFilter(expression, classNameSuffix));
+        return compilePageProcessor(filter, projections, classNameSuffix, initialBatchSize, false);
+    }
+
+    private Supplier<PageProcessor> compilePageProcessor(
+            Optional<RowExpression> filter,
+            List<? extends RowExpression> projections,
+            Optional<String> classNameSuffix,
+            OptionalInt initialBatchSize,
+            boolean omniFilterEnabled)
+    {
+        Optional<Supplier<PageFilter>> filterFunctionSupplier = filter.map(expression -> pageFunctionCompiler.compileFilter(expression, classNameSuffix, omniFilterEnabled));
         List<Supplier<PageProjection>> pageProjectionSuppliers = projections.stream()
                 .map(projection -> pageFunctionCompiler.compileProjection(projection, classNameSuffix))
                 .collect(toImmutableList());

@@ -152,6 +152,7 @@ public final class SystemSessionProperties
     public static final String SPILL_REUSE_TABLESCAN = "spill_reuse_tablescan";
     public static final String SPILL_THRESHOLD_REUSE_TABLESCAN = "spill_threshold_reuse_tablescan";
     public static final String OMNI_CACHE_ENABLED = "omni_cache_enabled";
+    public static final String OMNI_FILTER_ENABLED = "omni_filter_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -170,6 +171,11 @@ public final class SystemSessionProperties
             HetuConfig hetuConfig)
     {
         sessionProperties = ImmutableList.of(
+                booleanProperty(
+                        "omni_filter_enabled",
+                        "omni filter enabled",
+                        false,
+                        false),
                 booleanProperty(
                         "omni_cache_enabled",
                         "omni cache enabled",
@@ -1225,6 +1231,11 @@ public final class SystemSessionProperties
     public static Boolean getOmniCacheEnabled(Session session)
     {
         return session.getSystemProperty(OMNI_CACHE_ENABLED, Boolean.class);
+    }
+
+    public static Boolean getOmniFilterEnabled(Session session)
+    {
+        return session.getSystemProperty(OMNI_FILTER_ENABLED, Boolean.class);
     }
 
     public List<PropertyMetadata<?>> getSessionProperties()

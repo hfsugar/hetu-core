@@ -36,6 +36,7 @@ import io.prestosql.operator.project.ConstantPageProjection;
 import io.prestosql.operator.project.GeneratedPageProjection;
 import io.prestosql.operator.project.InputChannels;
 import io.prestosql.operator.project.InputPageProjection;
+import io.prestosql.operator.project.OmniPageFilter;
 import io.prestosql.operator.project.PageFieldsToInputParametersRewriter;
 import io.prestosql.operator.project.PageFilter;
 import io.prestosql.operator.project.PageProjection;
@@ -54,6 +55,7 @@ import io.prestosql.sql.relational.InputReferenceExpression;
 import io.prestosql.sql.relational.LambdaDefinitionExpression;
 import io.prestosql.sql.relational.RowExpression;
 import io.prestosql.sql.relational.RowExpressionVisitor;
+import nova.hetu.omnicache.runtime.OmniFilter;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
 
@@ -62,6 +64,7 @@ import javax.inject.Inject;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -101,10 +104,41 @@ public class PageFunctionCompiler
     private final DeterminismEvaluator determinismEvaluator;
 
     private final LoadingCache<RowExpression, Supplier<PageProjection>> projectionCache;
-    private final LoadingCache<RowExpression, Supplier<PageFilter>> filterCache;
+    private final LoadingCache<PageFilterCacheKey, Supplier<PageFilter>> filterCache;
 
     private final CacheStatsMBean projectionCacheStats;
     private final CacheStatsMBean filterCacheStats;
+
+    private class PageFilterCacheKey
+    {
+        private RowExpression expression;
+        private boolean omniFilterEnabled;
+        //For Cache not include classNameSuffix ,each call has diff classNameSuffix
+        private Optional<String> classNameSuffix;
+
+        public PageFilterCacheKey(RowExpression expression, Optional<String> classNameSuffix, boolean omniFilterEnabled)
+        {
+            this.expression = expression;
+            this.omniFilterEnabled = omniFilterEnabled;
+            this.classNameSuffix = classNameSuffix;
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            if (this == o) { return true; }
+            if (o == null || getClass() != o.getClass()) { return false; }
+            PageFilterCacheKey that = (PageFilterCacheKey) o;
+            return omniFilterEnabled == that.omniFilterEnabled &&
+                    Objects.equals(expression, that.expression);
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Objects.hash(expression, omniFilterEnabled);
+        }
+    }
 
     @Inject
     public PageFunctionCompiler(Metadata metadata, CompilerConfig config)
@@ -133,7 +167,7 @@ public class PageFunctionCompiler
             filterCache = CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(expressionCacheSize)
-                    .build(CacheLoader.from(filter -> compileFilterInternal(filter, Optional.empty())));
+                    .build(CacheLoader.from(filterKey -> compileFilterInternal(filterKey.expression, filterKey.classNameSuffix, filterKey.omniFilterEnabled)));
             filterCacheStats = new CacheStatsMBean(filterCache);
         }
         else {
@@ -357,39 +391,52 @@ public class PageFunctionCompiler
         return method;
     }
 
-    public Supplier<PageFilter> compileFilter(RowExpression filter, Optional<String> classNameSuffix)
+    public Supplier<PageFilter> compileFilter(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnable)
     {
         if (filterCache == null) {
-            return compileFilterInternal(filter, classNameSuffix);
+            return compileFilterInternal(filter, classNameSuffix, omniFilterEnable);
         }
-        return filterCache.getUnchecked(filter);
+        PageFilterCacheKey pageFilterCacheKey = new PageFilterCacheKey(filter, classNameSuffix, omniFilterEnable);
+        return filterCache.getUnchecked(pageFilterCacheKey);
     }
 
-    private Supplier<PageFilter> compileFilterInternal(RowExpression filter, Optional<String> classNameSuffix)
+    private Supplier<PageFilter> compileFilterInternal(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnabled)
     {
         requireNonNull(filter, "filter is null");
 
         PageFieldsToInputParametersRewriter.Result result = rewritePageFieldsToInputParameters(filter);
 
-        CallSiteBinder callSiteBinder = new CallSiteBinder();
-        ClassDefinition classDefinition = defineFilterClass(result.getRewrittenExpression(), result.getInputChannels(), callSiteBinder, classNameSuffix);
-
-        Class<? extends PageFilter> functionClass;
-        try {
-            functionClass = defineClass(classDefinition, PageFilter.class, callSiteBinder.getBindings(), getClass().getClassLoader());
+        if (omniFilterEnabled) {
+            return () -> {
+                try {
+                    return new OmniPageFilter(filter, result.getInputChannels(), new OmniFilter());
+                }
+                catch (RuntimeException e) {
+                    throw new PrestoException(COMPILER_ERROR, e);
+                }
+            };
         }
-        catch (Exception e) {
-            throw new PrestoException(COMPILER_ERROR, filter.toString(), e.getCause());
-        }
+        else {
+            CallSiteBinder callSiteBinder = new CallSiteBinder();
+            ClassDefinition classDefinition = defineFilterClass(result.getRewrittenExpression(), result.getInputChannels(), callSiteBinder, classNameSuffix);
 
-        return () -> {
+            Class<? extends PageFilter> functionClass;
             try {
-                return functionClass.getConstructor().newInstance();
+                functionClass = defineClass(classDefinition, PageFilter.class, callSiteBinder.getBindings(), getClass().getClassLoader());
             }
-            catch (ReflectiveOperationException e) {
-                throw new PrestoException(COMPILER_ERROR, e);
+            catch (Exception e) {
+                throw new PrestoException(COMPILER_ERROR, filter.toString(), e.getCause());
             }
-        };
+
+            return () -> {
+                try {
+                    return functionClass.getConstructor().newInstance();
+                }
+                catch (ReflectiveOperationException e) {
+                    throw new PrestoException(COMPILER_ERROR, e);
+                }
+            };
+        }
     }
 
     private static ParameterizedType generateFilterClassName(Optional<String> classNameSuffix)
