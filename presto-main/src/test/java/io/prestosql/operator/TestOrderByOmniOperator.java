@@ -67,8 +67,8 @@ public class TestOrderByOmniOperator
                 new PlanNodeId("test"),
                 ImmutableList.of(BIGINT, DOUBLE),
                 ImmutableList.of(1),
-                ImmutableList.of(0),
-                ImmutableList.of(DESC_NULLS_LAST));
+                ImmutableList.of(0, 1),
+                ImmutableList.of(DESC_NULLS_LAST, DESC_NULLS_LAST));
 
         DriverContext driverContext = createDriverContext(0);
         MaterializedResult.Builder expectedBuilder = resultBuilder(driverContext.getSession(), DOUBLE);
@@ -103,8 +103,8 @@ public class TestOrderByOmniOperator
                 new PlanNodeId("test"),
                 ImmutableList.of(BIGINT, DOUBLE),
                 ImmutableList.of(1),
-                ImmutableList.of(0),
-                ImmutableList.of(ASC_NULLS_LAST));
+                ImmutableList.of(0, 1),
+                ImmutableList.of(ASC_NULLS_LAST, ASC_NULLS_LAST));
 
         DriverContext driverContext = createDriverContext(0);
         MaterializedResult expected = resultBuilder(driverContext.getSession(), DOUBLE)

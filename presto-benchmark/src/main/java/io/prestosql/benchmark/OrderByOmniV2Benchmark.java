@@ -13,10 +13,8 @@ import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.LocalQueryRunner;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Optional;
+import java.security.SecureRandom;
+import java.util.*;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.prestosql.benchmark.BenchmarkQueryRunner.createLocalQueryRunner;
@@ -33,6 +31,7 @@ public class OrderByOmniV2Benchmark
     static int pageDistinctValueRepeatCount = 250000;
 
     static Iterator<Page> inputPagesIterator;
+    private long stageID = new SecureRandom().nextLong();;
 
     public OrderByOmniV2Benchmark(LocalQueryRunner localQueryRunner)
     {
@@ -48,7 +47,7 @@ public class OrderByOmniV2Benchmark
                 "orderstatus",
                 "totalprice");
         return ImmutableList.of(tableScanOepratorFactory, getOrderByOmniFactory());
-//        return ImmutableList.of(tableScanOepratorFactory, getOrderByFactory());
+        //return ImmutableList.of(tableScanOepratorFactory, getOrderByFactory());
     }
 
     public static void main(String[] args)
@@ -61,6 +60,7 @@ public class OrderByOmniV2Benchmark
     private OrderByOmniOperator.OrderByOmniOperatorFactory getOrderByOmniFactory()
     {
         OrderByOmniOperator.OrderByOmniOperatorFactory operatorFactory = new OrderByOmniOperator.OrderByOmniOperatorFactory(
+                stageID,
                 1,
                 new PlanNodeId("test"),
                 ImmutableList.of(INTEGER, INTEGER),

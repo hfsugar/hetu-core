@@ -19,6 +19,7 @@ import nova.hetu.omnicache.vector.Vec;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -35,6 +36,7 @@ public class OrderByOmniOperator
     public static class OrderByOmniOperatorFactory
             implements OperatorFactory
     {
+        private final long stageId;
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final List<Type> sourceTypes;
@@ -45,6 +47,7 @@ public class OrderByOmniOperator
         private boolean closed;
 
         public OrderByOmniOperatorFactory(
+                long stageId,
                 int operatorId,
                 PlanNodeId planNodeId,
                 List<? extends Type> sourceTypes,
@@ -52,6 +55,25 @@ public class OrderByOmniOperator
                 List<Integer> sortChannels,
                 List<SortOrder> sortOrder)
         {
+            this.stageId = stageId;
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
+            this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
+            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
+            this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder, "sortOrder is null"));
+            this.omniOrderBy = new OmniOrderBy();
+        }
+
+        public OrderByOmniOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> sourceTypes,
+                List<Integer> outputChannels,
+                List<Integer> sortChannels,
+                List<SortOrder> sortOrder)
+        {
+            this.stageId = new SecureRandom().nextLong();
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
@@ -65,6 +87,7 @@ public class OrderByOmniOperator
         public Operator createOperator(DriverContext driverContext) {
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, OrderByOmniOperator.class.getSimpleName());
             return new OrderByOmniOperator(
+                    stageId,
                     operatorContext,
                     sourceTypes,
                     outputChannels,
@@ -81,6 +104,7 @@ public class OrderByOmniOperator
         @Override
         public OperatorFactory duplicate() {
             return new OrderByOmniOperatorFactory(
+                    stageId,
                     operatorId,
                     planNodeId,
                     sourceTypes,
@@ -97,6 +121,7 @@ public class OrderByOmniOperator
         FINISHED
     }
 
+    private final long stageId;
     private final OperatorContext operatorContext;
     private final int[] outputChannels;
     private final LocalMemoryContext revocableMemoryContext;
@@ -107,13 +132,15 @@ public class OrderByOmniOperator
     private Iterator<Optional<Page>> sortedPages = null;
     private State state = State.NEEDS_INPUT;
 
-    public OrderByOmniOperator(OperatorContext operatorContext,
+    public OrderByOmniOperator(long stageId,
+                               OperatorContext operatorContext,
                                List<Type> sourceTypes,
                                List<Integer> outputChannels,
                                List<Integer> sortChannels,
                                List<SortOrder> sortOrder,
                                OmniOrderBy omniOrderBy)
     {
+        this.stageId = stageId;
         this.operatorContext = operatorContext;
         this.sourceTypes = sourceTypes;
         this.outputChannels = Ints.toArray(requireNonNull(outputChannels, "outputChannels is null"));
@@ -135,7 +162,9 @@ public class OrderByOmniOperator
             types[i] = getTypeIdx(sourceTypes.get(i));
         }
 
-        this.sortAddress = omniOrderBy.allocAndInitSort(types,
+        this.sortAddress = omniOrderBy.allocAndInitSort(
+                stageId,
+                types,
                 sourceTypes.size(),
                 this.outputChannels,
                 this.outputChannels.length,
@@ -256,7 +285,7 @@ public class OrderByOmniOperator
                 }
             }
 //            long start = System.currentTimeMillis();
-            omniOrderBy.sort(sortAddress);
+            omniOrderBy.sort(sortAddress, stageId);
 //            long elapsed = System.currentTimeMillis() - start;
 //            System.out.println("OrderByOmniOperator OrderByOmniOperator finish() sort spend : " + elapsed + "ms");
         }
