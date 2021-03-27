@@ -14,7 +14,10 @@ import io.prestosql.testing.LocalQueryRunner;
 
 import java.io.IOException;
 import java.security.SecureRandom;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.prestosql.benchmark.BenchmarkQueryRunner.createLocalQueryRunner;
@@ -47,7 +50,7 @@ public class OrderByOmniV2Benchmark
                 "orderstatus",
                 "totalprice");
         return ImmutableList.of(tableScanOepratorFactory, getOrderByOmniFactory());
-        //return ImmutableList.of(tableScanOepratorFactory, getOrderByFactory());
+//        return ImmutableList.of(tableScanOepratorFactory, getOrderByFactory());
     }
 
     public static void main(String[] args)

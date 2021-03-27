@@ -234,7 +234,7 @@ public class OrderByOmniOperator
 
         if (sortedPages == null) {
 //            long start = System.currentTimeMillis();
-            OMResult result = omniOrderBy.getResult(sortAddress);
+            OMResult result = omniOrderBy.getResult(sortAddress, stageId);
 //            System.out.println("OrderByOmniOperator Get result elapsed time " + (System.currentTimeMillis() - start) + " ms");
             Block[] blocks = getBlocks(result);
 
