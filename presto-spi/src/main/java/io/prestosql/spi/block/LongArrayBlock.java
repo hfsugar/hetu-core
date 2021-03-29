@@ -93,7 +93,7 @@ public class LongArrayBlock
         retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
     }
 
-    public LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, LongVec longVec)
+    public LongArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, LongVec values)
     {
         if (arrayOffset < 0) {
             throw new IllegalArgumentException("arrayOffset is negative");
@@ -103,11 +103,18 @@ public class LongArrayBlock
         }
         this.positionCount = positionCount;
 
-        if (longVec.size() - arrayOffset < positionCount) {
+        if (values.size() - arrayOffset < positionCount) {
             throw new IllegalArgumentException("values length is less than positionCount");
         }
 
-        this.values = longVec.slice(arrayOffset, arrayOffset + positionCount);
+        if (arrayOffset > 0) {
+            //there is no need to close the original Vec values,since it will be closed by its owner(eg. the left part of this Vec)
+            //although its owner may not own the whole part of the Vec
+            this.values = values.slice(arrayOffset, arrayOffset + positionCount);
+        }
+        else {
+            this.values = values;
+        }
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -123,7 +130,7 @@ public class LongArrayBlock
         this.arrayOffset = 0;
 
         sizeInBytes = (Long.BYTES + Byte.BYTES) * (long) positionCount;
-        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + values.capacity();
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + this.values.capacity();
     }
 
     @Override

@@ -29,7 +29,6 @@ import nova.hetu.omnicache.vector.VecType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.checkState;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -42,18 +41,18 @@ public final class HashAggregationOmniWorkV2
     private final int[] outputLayout;
     private final VecType[] inputTypes;
     private final long stageID;
-    OmniRuntime omniRuntime;
-    long omniOperatorID;
+    private final OmniRuntime omniRuntime;
+    private final long omniOperatorID;
     private boolean finished;
     private Vec[] result;
-//    private Page page;
+    //    private Page page;
     List<Vec> multiPageVecList = new ArrayList<>();
     int pageCount;
-    private int pageThreshold=100;
+    private final int PAGE_THRESHOLD = 100;
 
     public HashAggregationOmniWorkV2(OmniRuntime omniRuntime, long stageID, long omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
     {
-//        this.page = page;
+        requireNonNull(omniRuntime, "omniRuntime is null");
         this.omniRuntime = omniRuntime;
         this.stageID = stageID;
         this.omniOperatorID = omniOperatorID;
@@ -61,10 +60,6 @@ public final class HashAggregationOmniWorkV2
         this.outputTypes = outputTypes;
         this.outputLayout = outputLayout;
     }
-
-    static AtomicLong total = new AtomicLong(0);
-    static AtomicLong num = new AtomicLong(0);
-
     public boolean process(Page page)
     {
         requireNonNull(page, "page is null");
@@ -72,46 +67,42 @@ public final class HashAggregationOmniWorkV2
         if (page != null && page.getChannelCount() != 0) {
             pageCount++;
         }
-//        Vec[] inputData = new Vec[page.getChannelCount()];
-//        for (int i = 0; i < inputTypes.length; i++) {
-//            Vec vec = page.getBlock(i).getValues();
-//            if (vec == null) {
-//                throw new PrestoException(GENERIC_INTERNAL_ERROR, "omni Vec is null,may have been released");
-//            }
-//            inputData[i] = vec;
-//        }
+
         if (inputTypes.length != page.getChannelCount()) {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Agg omni operator input type and data not map");
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Agg omni operator input type channels and data channels not match");
         }
         for (int i = 0; i < page.getChannelCount(); i++) {
             Vec vec = page.getBlock(i).getVec();
-            if (vec==null) {
-                throw new PrestoException(GENERIC_INTERNAL_ERROR, "omni Vec is null,may have been released");
+            if (vec == null || vec.getData() == null) {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "omni Vec or vec.getData() is null,may have been released");
             }
-            if (vec.size()!=page.getPositionCount()) {
+            if (vec.size() != page.getPositionCount()) {
                 throw new PrestoException(GENERIC_INTERNAL_ERROR, "Vec size not equal the page position count");
             }
             multiPageVecList.add(vec);
         }
 
-        if (pageCount >= pageThreshold) {
-            long start = System.nanoTime();
+        if (pageCount >= PAGE_THRESHOLD) {
             omniRuntime.executeAggIntermediate(stageID, omniOperatorID, multiPageVecList, inputTypes.length);
-            long end = System.nanoTime();
-            total.addAndGet(end - start);
-        }else{
-            finished=true;
+        }
+        else {
+            finished = true;
             return true;
         }
 
+        closeVec();
 
+        multiPageVecList.clear();
+        pageCount = 0;
+        finished = true;
+        return true;
+    }
+
+    private void closeVec()
+    {
         for (Vec vec : multiPageVecList) {
             vec.close();
         }
-        multiPageVecList.clear();
-        pageCount=0;
-        finished = true;
-        return true;
     }
 
     public Page getResult()
@@ -119,9 +110,7 @@ public final class HashAggregationOmniWorkV2
         checkState(finished, "process has not finished");
 
         result = omniRuntime.executeAggFinal(omniOperatorID, outputTypes);
-        num.getAndAdd(1);
-        System.out.println("olk hash op "+num.get()+ " total takes: " + (total.get() / 1_000_000) + "ms");
-//        System.out.println("omni agg empty total takes: " + (total1.get() / 1_000_000) + "ms");
+//        System.out.println("Vec invoke close count: "+Vec.getCount()+" totalSize: "+Vec.getTotalSize());
         return toResult(result);
     }
 
@@ -158,10 +147,6 @@ public final class HashAggregationOmniWorkV2
         return finished;
     }
 
-//    public void updatePages(Page page)
-//    {
-//        this.page = page;
-//    }
     public int getPageCount(){
         return this.pageCount;
     }
@@ -169,14 +154,9 @@ public final class HashAggregationOmniWorkV2
     public void processRemaining()
     {
 
-        long start = System.nanoTime();
         omniRuntime.executeAggIntermediate(stageID, omniOperatorID, multiPageVecList, inputTypes.length);
-        long end = System.nanoTime();
-        total.addAndGet(end - start);
 
-        for (Vec vec : multiPageVecList) {
-            vec.close();
-        }
+        closeVec();
         finished = true;
         multiPageVecList.clear();
         pageCount=0;

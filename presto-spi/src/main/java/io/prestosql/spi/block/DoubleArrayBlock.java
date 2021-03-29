@@ -101,7 +101,12 @@ public class DoubleArrayBlock
             throw new IllegalArgumentException("values length is less than positionCount");
         }
 
-        this.values = values.slice(arrayOffset, arrayOffset + positionCount);
+        if (arrayOffset > 0) {
+            this.values = values.slice(arrayOffset, arrayOffset + positionCount);
+        }
+        else {
+            this.values = values;
+        }
 
         if (valueIsNull != null && valueIsNull.length - arrayOffset < positionCount) {
             throw new IllegalArgumentException("isNull length is less than positionCount");
@@ -117,7 +122,7 @@ public class DoubleArrayBlock
         this.arrayOffset = 0;
 
         sizeInBytes = (Double.BYTES + Byte.BYTES) * (long) positionCount;
-        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + values.capacity();
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + this.values.capacity();
     }
 
     @Override

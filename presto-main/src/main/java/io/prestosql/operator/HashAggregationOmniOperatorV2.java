@@ -37,8 +37,8 @@ public class HashAggregationOmniOperatorV2
 
     private int[] outputLayout;
     private OperatorContext operatorContext;
-    private long omniOperatorID;
-    private OmniRuntime omniRuntime;
+    private final long omniOperatorID;
+    private final OmniRuntime omniRuntime;
     VecType[] outputTypes;
 
     private boolean finishing;
@@ -67,9 +67,6 @@ public class HashAggregationOmniOperatorV2
     public void finish()
     {
         finishing = true;
-//        if (omniWork!=null && omniWork.getPageCount()>0) {
-//            omniWork.processRemaining();
-//        }
     }
 
     @Override
@@ -106,11 +103,7 @@ public class HashAggregationOmniOperatorV2
         if (omniWork == null) {
             omniWork = new HashAggregationOmniWorkV2(omniRuntime, stageID, omniOperatorID, inputTypes, outputTypes, outputLayout);
         }
-//        else {
-//            omniWork.updatePages(page);
-//        }
         omniWork.process(page);
-//        page.release();
     }
 
     @Override
@@ -189,7 +182,7 @@ public class HashAggregationOmniOperatorV2
 
             long omniOperatorID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
             omniRuntime.prepareAgg(stageID, omniOperatorID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes.get(0));
-            long l = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
+
             HashAggregationOmniOperatorV2 hashAggregationOperator = new HashAggregationOmniOperatorV2(operatorContext, omniRuntime, stageID, omniOperatorID, inAndOutputTypes.get(0), inAndOutputTypes.get(1), outputLayout);
             return hashAggregationOperator;
         }
