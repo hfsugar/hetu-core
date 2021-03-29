@@ -1,4 +1,4 @@
-/*
+package operator;/*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,7 +13,6 @@
  */
 
 import com.google.common.collect.ImmutableList;
-import io.prestosql.RowPagesBuilder;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.operator.DriverContext;
 import io.prestosql.operator.OrderByOmniOperator;
@@ -26,6 +25,7 @@ import io.prestosql.sql.planner.plan.PlanNodeId;
 import io.prestosql.testing.MaterializedResult;
 import io.prestosql.testing.TestingTaskContext;
 import org.jetbrains.annotations.NotNull;
+import tool.RowPagesBuilder;
 
 import java.util.List;
 import java.util.Optional;
@@ -37,16 +37,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.units.DataSize.succinctBytes;
-import static io.prestosql.RowPagesBuilder.rowPagesBuilder;
-import static io.prestosql.SessionTestUtils.TEST_SESSION;
 import static io.prestosql.metadata.MetadataManager.createTestMetadataManager;
-import static io.prestosql.operator.OperatorAssertion.toPages;
 import static io.prestosql.spi.block.SortOrder.DESC_NULLS_LAST;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.testing.MaterializedResult.resultBuilder;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.testng.Assert.assertEquals;
+import static tool.OperatorAssertion.toPages;
+import static tool.RowPagesBuilder.rowPagesBuilder;
+import static tool.SessionTestUtils.TEST_SESSION;
 
 public class OrderByBench
 {

@@ -13,6 +13,7 @@
  */
 package io.prestosql.operator;
 
+import io.prestosql.Session;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.block.Block;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkState;
+import static io.prestosql.SystemSessionProperties.getOmniPageThreshold;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.util.Objects.requireNonNull;
 
@@ -48,11 +50,17 @@ public final class HashAggregationOmniWorkV2
     //    private Page page;
     List<Vec> multiPageVecList = new ArrayList<>();
     int pageCount;
-    private final int PAGE_THRESHOLD = 100;
+    private final int PAGE_THRESHOLD;
 
-    public HashAggregationOmniWorkV2(OmniRuntime omniRuntime, long stageID, long omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
+    public HashAggregationOmniWorkV2(Optional<Session> session, OmniRuntime omniRuntime, long stageID, long omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
     {
         requireNonNull(omniRuntime, "omniRuntime is null");
+        if (session.isPresent()) {
+            PAGE_THRESHOLD = getOmniPageThreshold(session.get());
+        }
+        else {
+            PAGE_THRESHOLD = 100;
+        }
         this.omniRuntime = omniRuntime;
         this.stageID = stageID;
         this.omniOperatorID = omniOperatorID;

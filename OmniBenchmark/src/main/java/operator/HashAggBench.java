@@ -1,4 +1,4 @@
-/*
+package operator;/*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -46,16 +46,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static io.airlift.units.DataSize.succinctBytes;
-import static io.prestosql.SessionTestUtils.TEST_SESSION;
 import static io.prestosql.metadata.MetadataManager.createTestMetadataManager;
-import static io.prestosql.operator.OperatorAssertion.assertPagesEqualIgnoreOrder;
-import static io.prestosql.operator.OperatorAssertion.toPages;
 import static io.prestosql.spi.function.FunctionKind.AGGREGATE;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.testing.MaterializedResult.resultBuilder;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.testng.Assert.assertEquals;
+import static tool.OperatorAssertion.assertPagesEqualIgnoreOrder;
+import static tool.OperatorAssertion.toPages;
+import static tool.SessionTestUtils.TEST_SESSION;
 
 public class HashAggBench
 {
@@ -67,7 +67,7 @@ public class HashAggBench
 
     int pageDistinctCount = 4;
     int pageDistinctValueRepeatCount = 250 * 32;
-    int totalPageCount = 2000 / 32;
+    int totalPageCount = 200;
     int threadNum = 10;
     static AtomicLong totalTime = new AtomicLong(0);
     public boolean useOmni;
@@ -120,7 +120,7 @@ public class HashAggBench
                     long start = System.currentTimeMillis();
                     List<Page> pages;
                     if (useOmni) {
-                        pages = toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false);
+                        pages = toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(Optional.empty(), id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false);
                     }
                     else {
                         pages = toPages(getOriginalAggFactory(id), driverContext, input, false);

@@ -15,6 +15,7 @@ package io.prestosql.operator;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.log.Logger;
+import io.prestosql.Session;
 import io.prestosql.execution.Lifespan;
 import io.prestosql.spi.Page;
 import io.prestosql.sql.planner.plan.PlanNodeId;
@@ -23,6 +24,7 @@ import nova.hetu.omnicache.vector.AggType;
 import nova.hetu.omnicache.vector.VecType;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -33,6 +35,7 @@ public class HashAggregationOmniOperatorV2
 {
     private static final Logger log = Logger.get(HashAggregationOmniOperatorV2.class);
     private final long stageID;
+    private final Optional<Session> session;
     private VecType[] inputTypes;
 
     private int[] outputLayout;
@@ -46,8 +49,9 @@ public class HashAggregationOmniOperatorV2
 
     HashAggregationOmniWorkV2 omniWork;
 
-    public HashAggregationOmniOperatorV2(OperatorContext operatorContext, OmniRuntime omniRuntime, long stageID, long omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
+    public HashAggregationOmniOperatorV2(Optional<Session> session, OperatorContext operatorContext, OmniRuntime omniRuntime, long stageID, long omniOperatorID, VecType[] inputTypes, VecType[] outputTypes, int[] outputLayout)
     {
+        this.session = session;
         this.operatorContext = operatorContext;
         this.omniRuntime = omniRuntime;
         this.stageID = stageID;
@@ -101,7 +105,7 @@ public class HashAggregationOmniOperatorV2
         requireNonNull(page, "page is null");
 
         if (omniWork == null) {
-            omniWork = new HashAggregationOmniWorkV2(omniRuntime, stageID, omniOperatorID, inputTypes, outputTypes, outputLayout);
+            omniWork = new HashAggregationOmniWorkV2(session, omniRuntime, stageID, omniOperatorID, inputTypes, outputTypes, outputLayout);
         }
         omniWork.process(page);
     }
@@ -144,6 +148,7 @@ public class HashAggregationOmniOperatorV2
     public static class HashAggregationOmniOperatorFactory
             implements OperatorFactory
     {
+        private Optional<Session> session;
         private final OmniRuntime omniRuntime;
         private final long stageID;
         private int[] outputLayout;
@@ -158,8 +163,9 @@ public class HashAggregationOmniOperatorV2
         VecType[] omniAggregationTypes;
         VecType[] omniAggReturnTypes;
 
-        public HashAggregationOmniOperatorFactory(int operatorId, PlanNodeId planNodeId, long stageID, int omniTotalChannels, int[] omniGrouByChannels, VecType[] omniGroupByTypes, int[] omniAggregationChannels, VecType[] omniAggregationTypes, AggType[] omniAggregator, VecType[] omniAggReturnTypes, List<VecType[]> inAndOutputTypes, int[] outputLayout)
+        public HashAggregationOmniOperatorFactory(Optional<Session> session, int operatorId, PlanNodeId planNodeId, long stageID, int omniTotalChannels, int[] omniGrouByChannels, VecType[] omniGroupByTypes, int[] omniAggregationChannels, VecType[] omniAggregationTypes, AggType[] omniAggregator, VecType[] omniAggReturnTypes, List<VecType[]> inAndOutputTypes, int[] outputLayout)
         {
+            this.session = session;
             this.operatorId = operatorId;
             this.planNodeId = planNodeId;
             this.stageID = stageID;
@@ -182,7 +188,7 @@ public class HashAggregationOmniOperatorV2
 
             long omniOperatorID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
             omniRuntime.prepareAgg(stageID, omniOperatorID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes.get(0));
-            HashAggregationOmniOperatorV2 hashAggregationOperator = new HashAggregationOmniOperatorV2(operatorContext, omniRuntime, stageID, omniOperatorID, inAndOutputTypes.get(0), inAndOutputTypes.get(1), outputLayout);
+            HashAggregationOmniOperatorV2 hashAggregationOperator = new HashAggregationOmniOperatorV2(session, operatorContext, omniRuntime, stageID, omniOperatorID, inAndOutputTypes.get(0), inAndOutputTypes.get(1), outputLayout);
             return hashAggregationOperator;
         }
 

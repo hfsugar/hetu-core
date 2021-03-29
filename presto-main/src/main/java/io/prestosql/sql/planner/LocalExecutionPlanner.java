@@ -3084,7 +3084,7 @@ public class LocalExecutionPlanner
                     int[] outputLayout = getOutputLayout(omniTotalChannels, groupBySymbols, omniGrouByChannels, aggregationOutputSymbols, omniAggregationChannels, outputMappings);
 
                     long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
-                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(context.getNextOperatorId(), planNodeId, stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
+                    return new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(Optional.of(session), context.getNextOperatorId(), planNodeId, stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
                 }
                 return new HashAggregationOperatorFactory(
                         context.getNextOperatorId(),
