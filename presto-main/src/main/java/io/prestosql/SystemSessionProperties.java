@@ -152,6 +152,8 @@ public final class SystemSessionProperties
     public static final String SPILL_REUSE_TABLESCAN = "spill_reuse_tablescan";
     public static final String SPILL_THRESHOLD_REUSE_TABLESCAN = "spill_threshold_reuse_tablescan";
     public static final String OMNI_CACHE_ENABLED = "omni_cache_enabled";
+
+    public static final String OMNI_PAGE_THRESHOLD = "omni_page_threshold";
     public static final String OMNI_FILTER_ENABLED = "omni_filter_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
@@ -177,9 +179,14 @@ public final class SystemSessionProperties
                         false,
                         false),
                 booleanProperty(
-                        "omni_cache_enabled",
+                        OMNI_CACHE_ENABLED,
                         "omni cache enabled",
                         true,
+                        false),
+                integerProperty(
+                        OMNI_PAGE_THRESHOLD,
+                        "Number of pages that omni operator packs",
+                        100,
                         false),
                 stringProperty(
                         EXECUTION_POLICY,
@@ -1231,6 +1238,11 @@ public final class SystemSessionProperties
     public static Boolean getOmniCacheEnabled(Session session)
     {
         return session.getSystemProperty(OMNI_CACHE_ENABLED, Boolean.class);
+    }
+
+    public static int getOmniPageThreshold(Session session)
+    {
+        return session.getSystemProperty(OMNI_PAGE_THRESHOLD, Integer.class);
     }
 
     public static Boolean getOmniFilterEnabled(Session session)

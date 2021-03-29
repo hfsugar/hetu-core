@@ -182,7 +182,6 @@ public class HashAggregationOmniOperatorV2
 
             long omniOperatorID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
             omniRuntime.prepareAgg(stageID, omniOperatorID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes.get(0));
-
             HashAggregationOmniOperatorV2 hashAggregationOperator = new HashAggregationOmniOperatorV2(operatorContext, omniRuntime, stageID, omniOperatorID, inAndOutputTypes.get(0), inAndOutputTypes.get(1), outputLayout);
             return hashAggregationOperator;
         }

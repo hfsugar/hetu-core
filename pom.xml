@@ -144,6 +144,7 @@
         <module>hetu-common</module>
         <module>hetu-hazelcast</module>
         <module>nova-hetu</module>
+        <module>OmniBenchmark</module>
     </modules>
 
     <dependencyManagement>
