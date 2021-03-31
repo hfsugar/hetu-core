@@ -26,6 +26,7 @@ import io.prestosql.operator.project.PageFilter;
 import io.prestosql.operator.project.PageProcessor;
 import io.prestosql.operator.project.PageProjection;
 import io.prestosql.spi.PrestoException;
+import io.prestosql.spi.type.Type;
 import io.prestosql.sql.relational.RowExpression;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
@@ -92,14 +93,14 @@ public class ExpressionCompiler
         };
     }
 
-    public Supplier<PageProcessor> compilePageProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Optional<String> classNameSuffix, boolean omniFilterEnabled)
+    public Supplier<PageProcessor> compilePageProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Optional<String> classNameSuffix, boolean omniFilterEnabled, List<Type> inputTypes)
     {
-        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), omniFilterEnabled);
+        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), omniFilterEnabled, inputTypes);
     }
 
     public Supplier<PageProcessor> compilePageProcessor(Optional<RowExpression> filter, List<? extends RowExpression> projections, Optional<String> classNameSuffix)
     {
-        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), false);
+        return compilePageProcessor(filter, projections, classNameSuffix, OptionalInt.empty(), false, ImmutableList.of());
     }
 
     private Supplier<PageProcessor> compilePageProcessor(
@@ -108,7 +109,7 @@ public class ExpressionCompiler
             Optional<String> classNameSuffix,
             OptionalInt initialBatchSize)
     {
-        return compilePageProcessor(filter, projections, classNameSuffix, initialBatchSize, false);
+        return compilePageProcessor(filter, projections, classNameSuffix, initialBatchSize, false, ImmutableList.of());
     }
 
     private Supplier<PageProcessor> compilePageProcessor(
@@ -116,9 +117,10 @@ public class ExpressionCompiler
             List<? extends RowExpression> projections,
             Optional<String> classNameSuffix,
             OptionalInt initialBatchSize,
-            boolean omniFilterEnabled)
+            boolean omniFilterEnabled,
+            List<Type> inputTypes)
     {
-        Optional<Supplier<PageFilter>> filterFunctionSupplier = filter.map(expression -> pageFunctionCompiler.compileFilter(expression, classNameSuffix, omniFilterEnabled));
+        Optional<Supplier<PageFilter>> filterFunctionSupplier = filter.map(expression -> pageFunctionCompiler.compileFilter(expression, classNameSuffix, omniFilterEnabled, inputTypes));
         List<Supplier<PageProjection>> pageProjectionSuppliers = projections.stream()
                 .map(projection -> pageFunctionCompiler.compileProjection(projection, classNameSuffix))
                 .collect(toImmutableList());

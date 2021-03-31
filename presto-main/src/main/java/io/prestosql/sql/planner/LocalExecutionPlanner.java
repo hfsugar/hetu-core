@@ -1284,9 +1284,12 @@ public class LocalExecutionPlanner
             ReuseExchangeOperator.STRATEGY strategy = REUSE_STRATEGY_DEFAULT;
             Integer reuseTableScanMappingId = 0;
             Integer consumerTableScanNodeCount = 0;
+            List<Type> inputTypes;
             if (sourceNode instanceof TableScanNode) {
                 TableScanNode tableScanNode = (TableScanNode) sourceNode;
                 table = tableScanNode.getTable();
+
+                inputTypes = getSymbolTypes(tableScanNode.getOutputSymbols(), context.getTypes());
 
                 // extract the column handles and channel to type mapping
                 sourceLayout = new LinkedHashMap<>();
@@ -1321,6 +1324,8 @@ public class LocalExecutionPlanner
                 // plan source
                 source = sourceNode.accept(this, context);
                 sourceLayout = source.getLayout();
+
+                inputTypes = source.getTypes();
             }
 
             // build output mapping
@@ -1357,12 +1362,11 @@ public class LocalExecutionPlanner
             List<RowExpression> translatedProjections = projections.stream()
                     .map(expression -> toRowExpression(expression, expressionTypes, sourceLayout))
                     .collect(toImmutableList());
-
             try {
                 if (columns != null) {
                     //TODO: Need Support RecordCursor Filter And Project Omni Codegen
                     Supplier<CursorProcessor> cursorProcessor = expressionCompiler.compileCursorProcessor(translatedFilter, translatedProjections, sourceNode.getId(), getOmniFilterEnabled(session));
-                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session));
+                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session), inputTypes);
 
                     boolean spillEnabled = isSpillEnabled(session) && isSpillReuseExchange(session);
                     int spillerThreshold = getSpillOperatorThresholdReuseExchange(session) * 1024 * 1024; //convert from MB to bytes
@@ -1389,7 +1393,7 @@ public class LocalExecutionPlanner
                     return new PhysicalOperation(operatorFactory, outputMappings, context, stageExecutionDescriptor.isScanGroupedExecution(sourceNode.getId()) ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
                 }
                 else {
-                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session));
+                    Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId), getOmniFilterEnabled(session), inputTypes);
 
                     OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(
                             context.getNextOperatorId(),

@@ -15,13 +15,13 @@ package io.prestosql.operator.project;
 
 import io.prestosql.spi.Page;
 import io.prestosql.spi.connector.ConnectorSession;
+import io.prestosql.spi.type.Type;
 import io.prestosql.sql.relational.RowExpression;
 import nova.hetu.omnicache.runtime.FilterContext;
 import nova.hetu.omnicache.runtime.OmniFilter;
 import nova.hetu.omnicache.vector.IntVec;
 import nova.hetu.omnicache.vector.Vec;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
@@ -35,12 +35,32 @@ public class OmniPageFilter
     private final OmniFilter omniFilter;
     private FilterContext omniFilterHandler;
 
-    public OmniPageFilter(RowExpression rowExpression, InputChannels inputChannels, OmniFilter filter)
+    public OmniPageFilter(RowExpression rowExpression, InputChannels inputChannels, OmniFilter filter, List<Type> inputTypes)
     {
         this.filterExpression = requireNonNull(rowExpression, "filterExpression is null");
         this.inputChannels = requireNonNull(inputChannels, "inputChannels is null");
         this.omniFilter = requireNonNull(filter, "filter is null");
-        this.omniFilterHandler = null;
+
+        int[] vecTypes = new int[inputTypes.size()];
+        for (int idx = 0; idx < inputTypes.size(); idx++) {
+            String type = inputTypes.get(idx).getTypeSignature().getBase();
+            switch (type) {
+                case "bigint":
+                    vecTypes[idx] = 2;
+                    break;
+                case "integer":
+                case "date":
+                    vecTypes[idx] = 1;
+                    break;
+                case "double":
+                    vecTypes[idx] = 3;
+                    break;
+                default:
+                    throw new UnsupportedOperationException("Unsupported type for omni filter");
+            }
+        }
+        this.omniFilterHandler = omniFilter.compile(filterExpression.toString(), vecTypes);
+        System.out.println("Compile filter");
     }
 
     @Override
@@ -58,19 +78,20 @@ public class OmniPageFilter
     @Override
     public SelectedPositions filter(ConnectorSession session, Page page)
     {
-        List<Vec> inputs = new ArrayList<>(page.getChannelCount());
+        // TODO: get types and compile in constructor
+        Vec[] inputs = new Vec[page.getChannelCount()];
         for (int idx = 0; idx < page.getChannelCount(); idx++) {
-            inputs.add(page.getBlock(idx).getVec());
+            inputs[idx] = page.getBlock(idx).getVec();
         }
-        if (omniFilterHandler == null) {
-            int[] vecTypes = new int[page.getChannelCount()];
-            for (int idx = 0; idx < page.getChannelCount(); idx++) {
-                vecTypes[idx] = page.getBlock(idx).getVec().getType().getValue();
-            }
-            omniFilterHandler = omniFilter.compile(filterExpression.toString(), vecTypes);
-        }
+//        if (omniFilterHandler == null) {
+//            int[] vecTypes = new int[page.getChannelCount()];
+//            for (int idx = 0; idx < page.getChannelCount(); idx++) {
+//                vecTypes[idx] = page.getBlock(idx).getVec().getType().getValue();
+//            }
+//            omniFilterHandler = omniFilter.compile(filterExpression.toString(), vecTypes);
+//        }
         //todo: Future we need direct result selected position offset
-        IntVec result = omniFilter.execute(omniFilterHandler, (Vec[]) inputs.toArray(), page.getPositionCount());
+        IntVec result = omniFilter.execute(omniFilterHandler, inputs, page.getPositionCount());
         return positionsArrayToSelectedPositions(result, page.getPositionCount());
     }
 

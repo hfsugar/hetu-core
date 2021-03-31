@@ -46,6 +46,7 @@ import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.connector.ConnectorSession;
+import io.prestosql.spi.type.Type;
 import io.prestosql.sql.gen.LambdaBytecodeGenerator.CompiledLambda;
 import io.prestosql.sql.planner.CompilerConfig;
 import io.prestosql.sql.relational.ConstantExpression;
@@ -115,12 +116,14 @@ public class PageFunctionCompiler
         private boolean omniFilterEnabled;
         //For Cache not include classNameSuffix ,each call has diff classNameSuffix
         private Optional<String> classNameSuffix;
+        private List<Type> inputTypes;
 
-        public PageFilterCacheKey(RowExpression expression, Optional<String> classNameSuffix, boolean omniFilterEnabled)
+        public PageFilterCacheKey(RowExpression expression, Optional<String> classNameSuffix, boolean omniFilterEnabled, List<Type> inputTypes)
         {
             this.expression = expression;
             this.omniFilterEnabled = omniFilterEnabled;
             this.classNameSuffix = classNameSuffix;
+            this.inputTypes = inputTypes;
         }
 
         @Override
@@ -167,7 +170,7 @@ public class PageFunctionCompiler
             filterCache = CacheBuilder.newBuilder()
                     .recordStats()
                     .maximumSize(expressionCacheSize)
-                    .build(CacheLoader.from(filterKey -> compileFilterInternal(filterKey.expression, filterKey.classNameSuffix, filterKey.omniFilterEnabled)));
+                    .build(CacheLoader.from(filterKey -> compileFilterInternal(filterKey.expression, filterKey.classNameSuffix, filterKey.omniFilterEnabled, filterKey.inputTypes)));
             filterCacheStats = new CacheStatsMBean(filterCache);
         }
         else {
@@ -391,16 +394,16 @@ public class PageFunctionCompiler
         return method;
     }
 
-    public Supplier<PageFilter> compileFilter(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnable)
+    public Supplier<PageFilter> compileFilter(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnable, List<Type> inputTypes)
     {
         if (filterCache == null) {
-            return compileFilterInternal(filter, classNameSuffix, omniFilterEnable);
+            return compileFilterInternal(filter, classNameSuffix, omniFilterEnable, inputTypes);
         }
-        PageFilterCacheKey pageFilterCacheKey = new PageFilterCacheKey(filter, classNameSuffix, omniFilterEnable);
+        PageFilterCacheKey pageFilterCacheKey = new PageFilterCacheKey(filter, classNameSuffix, omniFilterEnable, inputTypes);
         return filterCache.getUnchecked(pageFilterCacheKey);
     }
 
-    private Supplier<PageFilter> compileFilterInternal(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnabled)
+    private Supplier<PageFilter> compileFilterInternal(RowExpression filter, Optional<String> classNameSuffix, boolean omniFilterEnabled, List<Type> inputTypes)
     {
         requireNonNull(filter, "filter is null");
 
@@ -409,7 +412,7 @@ public class PageFunctionCompiler
         if (omniFilterEnabled) {
             return () -> {
                 try {
-                    return new OmniPageFilter(filter, result.getInputChannels(), new OmniFilter());
+                    return new OmniPageFilter(filter, result.getInputChannels(), new OmniFilter(), inputTypes);
                 }
                 catch (RuntimeException e) {
                     throw new PrestoException(COMPILER_ERROR, e);
