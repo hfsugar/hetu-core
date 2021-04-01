@@ -137,10 +137,10 @@ public class TestHashAggregationOmniOperatorV2
 
     int pageDistinctCount = 4;
     int pageDistinctValueRepeatCount = 250;
-    int totalPageCount = 2000;
-    int threadNum =100;
+    int totalPageCount = 2011;
+    int threadNum = 1000;
 
-    @Test(invocationCount = 1)
+    @Test(invocationCount = 10)
     public void testHashAggregation()
     {
         int omniTotalChannels = 4;
@@ -155,8 +155,6 @@ public class TestHashAggregationOmniOperatorV2
         inAndOutputTypes.add(new VecType[] {VecType.LONG,VecType.LONG,VecType.LONG,VecType.LONG});
         int[] outputLayout = new int[] {0, 1, 2, 3};
 
-
-
 //        expected
         DriverContext driverContext = createDriverContext(Integer.MAX_VALUE);
         MaterializedResult.Builder expectedBuilder = resultBuilder(driverContext.getSession(), BIGINT, BIGINT, BIGINT, BIGINT);
@@ -168,14 +166,12 @@ public class TestHashAggregationOmniOperatorV2
 
         ExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
         ArrayList<ListenableFuture<List<Page>>> futureArrayList = new ArrayList<>();
+        long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
         List<List<Page>> pagesList = new ArrayList<>();
         for (int i = 0; i < threadNum; i++) {
-            int id = i + 1;
-//            System.out.println("build page start");
+            int id = i;
             List<Page> input = builderPage();
-//            System.out.println("build page end");
-            long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
-            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false));
+            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(Optional.empty(), id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false));
 //            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> {toPages(getOriginalAggFactory(id), driverContext, input, false);});
             futureArrayList.add(submit);
         }
@@ -246,7 +242,7 @@ public class TestHashAggregationOmniOperatorV2
                 .addDriverContext();
     }
 
-    @Test(invocationCount = 10)
+    @Test(invocationCount = 1)
     public void testHashAggregationWithDiffLayout()
     {
         int omniTotalChannels = 4;
@@ -277,7 +273,7 @@ public class TestHashAggregationOmniOperatorV2
             int id = i + 1;
             List<Page> input = builderPageWithDiffLayout();
             long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
-            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false));
+            ListenableFuture<List<Page>> submit = (ListenableFuture<List<Page>>) service.submit(() -> toPages(new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(Optional.empty(), id, new PlanNodeId(String.valueOf(id)), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout), driverContext, input, false));
             futureArrayList.add(submit);
         }
 

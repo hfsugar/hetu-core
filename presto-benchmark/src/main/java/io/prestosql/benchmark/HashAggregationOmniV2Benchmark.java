@@ -60,9 +60,8 @@ public class HashAggregationOmniV2Benchmark
     public static Page inputPage;
     public static Iterator<Page> inputPagesIterator;
     private final InternalAggregationFunction longSum;
-    static int warmCycle = 5;
-    static int runCycle = 100;
-    int runningCycle;
+    static int warmCycle = 0;
+    static int runCycle = 5;
 
     public HashAggregationOmniV2Benchmark(LocalQueryRunner localQueryRunner)
     {
@@ -75,7 +74,8 @@ public class HashAggregationOmniV2Benchmark
     static int pageDistinctCount = 4;
     static int pageDistinctValueRepeatCount = 250;
     static int totalPageCount = 2000;
-    static AtomicLong buildPageTime = new AtomicLong(0);
+    static AtomicLong buildPageTotalTime = new AtomicLong(0);
+    static AtomicLong buildPageCount = new AtomicLong(0);
 
     public static void main(String[] args)
     {
@@ -84,7 +84,40 @@ public class HashAggregationOmniV2Benchmark
         LocalQueryRunner localQueryRunner = createLocalQueryRunner();
 
         new HashAggregationOmniV2Benchmark(localQueryRunner).runBenchmark(new SimpleLineBenchmarkResultWriter(System.out));
-        System.out.println("average build page times :" + buildPageTime.get() / runCycle);
+        System.out.println("build page count: " + buildPageCount.get() + " | average build page times :" + (buildPageTotalTime.get() / buildPageCount.get()));
+    }
+
+    public static void builderPage()
+    {
+        List<Type> dataTypes = new ArrayList<>();
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+        dataTypes.add(BIGINT);
+
+        List<Page> inputPages = new ArrayList<>();
+        for (int k = 0; k < totalPageCount; k++) {
+            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
+            BlockBuilder group1 = pb.getBlockBuilder(0);
+            BlockBuilder group2 = pb.getBlockBuilder(1);
+            BlockBuilder sum1 = pb.getBlockBuilder(2);
+            BlockBuilder sum2 = pb.getBlockBuilder(3);
+
+            for (int i = 0; i < pageDistinctCount; i++) {
+                for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
+                    group1.writeLong(i);
+                    group2.writeLong(i);
+                    sum1.writeLong(1);
+                    sum2.writeLong(1);
+                    pb.declarePosition();
+                }
+            }
+            Page build = pb.build();
+
+            inputPages.add(build);
+        }
+
+        inputPagesIterator = inputPages.iterator();
     }
 
     @Override
@@ -130,7 +163,7 @@ public class HashAggregationOmniV2Benchmark
         int[] outputLayout = new int[] {0, 1, 2, 3};
 
         long stageID = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
-        HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(1, new PlanNodeId("1"), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
+        HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory hashAggregationOmniV2OperatorFactory = new HashAggregationOmniOperatorV2.HashAggregationOmniOperatorFactory(Optional.empty(), 1, new PlanNodeId("1"), stageID, omniTotalChannels, omniGrouByChannels, omniGroupByTypes, omniAggregationChannels, omniAggregationTypes, omniAggregator, omniAggReturnTypes, inAndOutputTypes, outputLayout);
         return hashAggregationOmniV2OperatorFactory;
     }
 
@@ -160,24 +193,7 @@ public class HashAggregationOmniV2Benchmark
     {
         checkArgument(session.getCatalog().isPresent(), "catalog not set");
         checkArgument(session.getSchema().isPresent(), "schema not set");
-//        // look up the table
-//        Metadata metadata = localQueryRunner.getMetadata();
-//        QualifiedObjectName qualifiedTableName = new QualifiedObjectName(session.getCatalog().get(), session.getSchema().get(), tableName);
-//        TableHandle tableHandle = metadata.getTableHandle(session, qualifiedTableName).orElse(null);
-//        checkArgument(tableHandle != null, "Table %s does not exist", qualifiedTableName);
-//
-//        // lookup the columns
-//        Map<String, ColumnHandle> allColumnHandles = metadata.getColumnHandles(session, tableHandle);
-//        ImmutableList.Builder<ColumnHandle> columnHandlesBuilder = ImmutableList.builder();
-//        for (String columnName : columnNames) {
-//            ColumnHandle columnHandle = allColumnHandles.get(columnName);
-//            checkArgument(columnHandle != null, "Table %s does not have a column %s", tableName, columnName);
-//            columnHandlesBuilder.add(columnHandle);
-//        }
-//        List<ColumnHandle> columnHandles = columnHandlesBuilder.build();
-//
-//        // get the split for this table
-//        Split split = getLocalQuerySplit(session, tableHandle);
+
         return new OperatorFactory()
         {
             @Override
@@ -186,10 +202,8 @@ public class HashAggregationOmniV2Benchmark
                 OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, "BenchmarkSource");
                 long start = System.currentTimeMillis();
                 builderPage();
-                runningCycle++;
-                if (runningCycle > 5) {
-                    buildPageTime.addAndGet(System.currentTimeMillis() - start);
-                }
+                buildPageTotalTime.addAndGet((System.currentTimeMillis() - start));
+                buildPageCount.incrementAndGet();
 
                 ConnectorPageSource pageSource = createOmniCachePageSource();//localQueryRunner.getPageSourceManager().createPageSource(session, split, tableHandle, columnHandles, Optional.empty());
 
@@ -207,39 +221,6 @@ public class HashAggregationOmniV2Benchmark
                 throw new UnsupportedOperationException();
             }
         };
-    }
-
-    public static void builderPage()
-    {
-        List<Type> dataTypes = new ArrayList<>();
-        dataTypes.add(BIGINT);
-        dataTypes.add(BIGINT);
-        dataTypes.add(BIGINT);
-        dataTypes.add(BIGINT);
-
-        List<Page> inputPages = new ArrayList<>();
-        for (int k = 0; k < totalPageCount; k++) {
-            PageBuilder pb = PageBuilder.withMaxPageSize(Integer.MAX_VALUE, dataTypes);
-            BlockBuilder group1 = pb.getBlockBuilder(0);
-            BlockBuilder group2 = pb.getBlockBuilder(1);
-            BlockBuilder sum1 = pb.getBlockBuilder(2);
-            BlockBuilder sum2 = pb.getBlockBuilder(3);
-
-            for (int i = 0; i < pageDistinctCount; i++) {
-                for (int j = 0; j < pageDistinctValueRepeatCount; j++) {
-                    group1.writeLong(i);
-                    group2.writeLong(i);
-                    sum1.writeLong(1);
-                    sum2.writeLong(1);
-                    pb.declarePosition();
-                }
-            }
-            Page build = pb.build();
-
-            inputPages.add(build);
-        }
-
-        inputPagesIterator = inputPages.iterator();
     }
 
     private ConnectorPageSource createOmniCachePageSource()
